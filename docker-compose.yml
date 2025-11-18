@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  camireads-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: camireads-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Configure the backend API URL
+      # Update this to point to your actual backend service
+      - NEXT_PUBLIC_API_URL=http://camireads-api:8080
+    restart: unless-stopped
+    networks:
+      - camireads-network
+
+networks:
+  camireads-network:
+    driver: bridge
