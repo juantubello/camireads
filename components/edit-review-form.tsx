@@ -186,7 +186,7 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
             {/* Rating */}
             <div className="space-y-2">
               <Label>Calificación *</Label>
-              <StarRating rating={rating} onChange={setRating} size="lg" />
+              <StarRating rating={rating} onRatingChange={setRating} size="lg"/>
             </div>
             
             {/* Reading Dates */}
