@@ -10,6 +10,34 @@ import { Loader2 } from 'lucide-react'
 import { API_BASE_URL } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
 
+type ReviewFromApi = {
+  id: number
+  rating: number
+  reviewText: string
+  createdAt: string              // fecha de la review
+  book: {
+    id: number
+    title: string
+    author: string
+    urlCover?: string | null
+    hasUrlCover?: boolean | null
+    startReadDate?: string | null
+    endReadDate?: string | null
+    createdAt?: string | null    // fecha del libro en la BD
+    b64Cover?: string | null
+  }
+}
+
+type SpringPage<T> = {
+  content: T[]
+  totalPages: number
+  totalElements: number
+  number: number
+  size: number
+  first: boolean
+  last: boolean
+}
+
 interface BookWithReview extends Book {
   review?: Review
 }
@@ -151,74 +179,102 @@ export function ReviewList() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [usingMockData, setUsingMockData] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const PAGE_SIZE = 20
   
   useEffect(() => {
-    fetchBooks(1)
+    fetchBooks(0)
   }, [])
   
-  async function fetchBooks(page: number) {
-    const isFirstPage = page === 1
-    if (isFirstPage) {
-      setLoading(true)
-    } else {
-      setLoadingMore(true)
-    }
-    
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/reviews?page=${page}&pageSize=${PAGE_SIZE}&sort=created_at_desc`
-      )
-      
-      if (!response.ok) {
-        throw new Error('Backend API not available')
-      }
-      
-      const data: PaginatedResponse<BookWithReview> = await response.json()
-      
-      if (isFirstPage) {
-        setBooks(data.items)
-      } else {
-        setBooks(prev => [...prev, ...data.items])
-      }
-      
-      setHasMore(data.hasMore)
-      setCurrentPage(page)
-      setUsingMockData(false)
-    } catch (error) {
-      console.log('[v0] Backend API not available, using mock data for preview')
-      
-      const sortedMockBooks = [...mockBooks].sort((a, b) => {
-        const dateA = new Date(a.review?.created_at || '').getTime()
-        const dateB = new Date(b.review?.created_at || '').getTime()
-        return dateB - dateA
-      })
-      
-      const startIndex = (page - 1) * PAGE_SIZE
-      const endIndex = startIndex + PAGE_SIZE
-      const pageItems = sortedMockBooks.slice(startIndex, endIndex)
-      
-      if (isFirstPage) {
-        setBooks(pageItems)
-      } else {
-        setBooks(prev => [...prev, ...pageItems])
-      }
-      
-      setHasMore(endIndex < sortedMockBooks.length)
-      setCurrentPage(page)
-      setUsingMockData(true)
-    } finally {
-      setLoading(false)
-      setLoadingMore(false)
-    }
+async function fetchBooks(page: number) {
+  const isFirstPage = page === 0
+
+  if (isFirstPage) {
+    setLoading(true)
+  } else {
+    setLoadingMore(true)
   }
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/reviews/latest?page=${page}&size=${PAGE_SIZE}`
+    )
+
+    if (!response.ok) {
+      throw new Error('Backend API not available')
+    }
+
+    const data: SpringPage<ReviewFromApi> = await response.json()
+
+    // 🔁 mapeamos las reviews del backend al formato BookWithReview que usa el front
+    const mappedItems = data.content.map(mapReviewToBookWithReview)
+
+    if (isFirstPage) {
+      setBooks(mappedItems)
+    } else {
+      setBooks(prev => [...prev, ...mappedItems])
+    }
+
+    // hasMore = !last
+    setHasMore(!data.last)
+    setCurrentPage(data.number)
+    setUsingMockData(false)
+  } catch (error) {
+    console.log('[v0] Backend API not available, using mock data for preview')
+
+    const sortedMockBooks = [...mockBooks].sort((a, b) => {
+      const dateA = new Date(a.review?.created_at || '').getTime()
+      const dateB = new Date(b.review?.created_at || '').getTime()
+      return dateB - dateA
+    })
+
+    const startIndex = page * PAGE_SIZE
+    const endIndex = startIndex + PAGE_SIZE
+    const pageItems = sortedMockBooks.slice(startIndex, endIndex)
+
+    if (isFirstPage) {
+      setBooks(pageItems)
+    } else {
+      setBooks(prev => [...prev, ...pageItems])
+    }
+
+    setHasMore(endIndex < sortedMockBooks.length)
+    setCurrentPage(page)
+    setUsingMockData(true)
+  } finally {
+    setLoading(false)
+    setLoadingMore(false)
+  }
+}
   
   function handleLoadMore() {
     fetchBooks(currentPage + 1)
   }
   
+function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
+  const { book } = review
+
+  return {
+    id: book.id,
+    title: book.title,
+    author: book.author,
+    start_read_date: book.startReadDate ?? '',
+    end_read_date: book.endReadDate ?? '',
+    created_at: book.createdAt ?? review.createdAt ?? '',
+    has_url_cover: book.hasUrlCover ?? false,
+    url_cover: book.urlCover ?? undefined,
+    b64_cover: book.b64Cover ?? undefined,
+    review: {
+      id: review.id,
+      book_id: book.id,
+      rating: review.rating,
+      review_text: review.reviewText,
+      created_at: review.createdAt,
+    },
+  }
+}
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
