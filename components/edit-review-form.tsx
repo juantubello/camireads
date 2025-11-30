@@ -9,123 +9,143 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { StarRating } from '@/components/star-rating'
-import { ArrowLeft, Loader2, Save, Plus, X } from 'lucide-react'
+import { ArrowLeft, Loader2, Save, Plus, X, BookOpen, Pencil } from 'lucide-react'
 import { API_BASE_URL } from '@/lib/api-config'
-import { Book, Review } from '@/lib/types'
 import { PageTitle } from '@/components/page-title'
 
-interface BookWithReview extends Book {
-  review?: Review
+interface ReviewQuoteResponse {
+  id: number
+  quoteText: string
+  createdAt: string
 }
 
-const mockBook: BookWithReview = {
-  id: 1,
-  title: 'La Biblioteca de la Medianoche',
-  author: 'Matt Haig',
-  url_cover: '/midnight-library-book-cover.jpg',
-  has_url_cover: true,
-  start_read_date: '2024-01-01',
-  end_read_date: '2024-01-15',
-  created_at: '2024-01-15',
-  review: {
-    id: 1,
-    book_id: 1,
-    rating: 5,
-    review_text: 'Una hermosa exploración de las decisiones de la vida y los universos paralelos. Me encantó cada página.',
-    created_at: '2024-01-15',
-    quotes: ['Nunca subestimes el gran poder del arrepentimiento.']
+interface ReviewResponse {
+  id: number
+  rating: number
+  reviewText: string
+  createdAt: string
+  quotes: ReviewQuoteResponse[]
+  book: {
+    id: number
+    title: string
+    author: string
+    startReadDate: string | null
+    endReadDate: string | null
+    createdAt: string
+    hasUrlCover: boolean
+    urlCover: string | null
+    b64Cover: string | null
   }
+}
+
+const TIME_SUFFIX = process.env.NEXT_PUBLIC_TIME_SUFFIX || 'T21:00:00-03:00'
+
+function toBackendDate(dateString: string | null): string | null {
+  if (!dateString) return null
+  return `${dateString}${TIME_SUFFIX}`
 }
 
 export function EditReviewForm({ bookId }: { bookId: string }) {
   const router = useRouter()
-  const [book, setBook] = useState<BookWithReview | null>(null)
+
+  const [book, setBook] = useState<ReviewResponse['book'] | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  
-  // Form state
+
+  // Form fields
   const [rating, setRating] = useState(0)
   const [reviewText, setReviewText] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [quotes, setQuotes] = useState<string[]>([])
-  
-  const addQuote = () => {
-    setQuotes([...quotes, ''])
-  }
-  
-  const updateQuote = (index: number, value: string) => {
-    const newQuotes = [...quotes]
-    newQuotes[index] = value
-    setQuotes(newQuotes)
-  }
-  
-  const removeQuote = (index: number) => {
-    setQuotes(quotes.filter((_, i) => i !== index))
-  }
-  
+
+  // URL portada
+  const [coverUrl, setCoverUrl] = useState('')
+  const [editingCover, setEditingCover] = useState(false)
+
   useEffect(() => {
-    fetchBook()
+    fetchReview()
   }, [bookId])
-  
-  async function fetchBook() {
+
+  async function fetchReview() {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/books/${bookId}`)
-      
-      if (!response.ok) {
-        throw new Error('Backend API not available')
-      }
-      
-      const data = await response.json()
-      setBook(data)
+      const response = await fetch(`${API_BASE_URL}/reviews/book/${bookId}`)
+
+      if (!response.ok) throw new Error('Review not found')
+
+      const data: ReviewResponse = await response.json()
       populateForm(data)
     } catch (error) {
-      console.log('[v0] Backend API not available, using mock data for preview')
-      setBook(mockBook)
-      populateForm(mockBook)
+      console.error('[EditReview] Error fetching review:', error)
     } finally {
       setLoading(false)
     }
   }
-  
-  function populateForm(bookData: BookWithReview) {
-    if (bookData.review) {
-      setRating(bookData.review.rating)
-      setReviewText(bookData.review.review_text || '')
-      setQuotes(bookData.review.quotes || [])
+
+  function populateForm(data: ReviewResponse) {
+    // REVIEW
+    setRating(data.rating)
+    setReviewText(data.reviewText ?? '')
+
+    // BOOK
+    setBook(data.book)
+
+    setStartDate(data.book.startReadDate?.slice(0, 10) || '')
+    setEndDate(data.book.endReadDate?.slice(0, 10) || '')
+
+    // Portada
+    setCoverUrl(data.book.urlCover ?? '')
+
+    // QUOTES → convert objects to simple strings
+    if (data.quotes && Array.isArray(data.quotes)) {
+      setQuotes(data.quotes.map((q) => q.quoteText))
+    } else {
+      setQuotes([])
     }
-    setStartDate(bookData.start_read_date || '')
-    setEndDate(bookData.end_read_date || '')
   }
-  
+
+  const addQuote = () => setQuotes([...quotes, ''])
+
+  const updateQuote = (index: number, value: string) => {
+    const updated = [...quotes]
+    updated[index] = value
+    setQuotes(updated)
+  }
+
+  const removeQuote = (index: number) =>
+    setQuotes(quotes.filter((_, i) => i !== index))
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    
+
     try {
-      const payload = {
+      const payload: any = {
         rating,
-        review_text: reviewText,
-        start_read_date: startDate || null,
-        end_read_date: endDate || null,
-        quotes: quotes.filter(q => q.trim() !== ''),
+        reviewText: reviewText || null,
+        startReadDate: toBackendDate(startDate || null),
+        endReadDate: toBackendDate(endDate || null),
+        // siempre mandamos el array (aunque vacío)
+        quotes: quotes.map((q) => q.trim()).filter((q) => q.length > 0),
+        // 🔹 SIEMPRE mandamos urlCover (vacía o no)
+        urlCover: coverUrl.trim(),
       }
-      
-      await fetch(`${API_BASE_URL}/api/books/${bookId}`, {
+
+      await fetch(`${API_BASE_URL}/reviews/book/${bookId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      
+
       router.push(`/book/${bookId}`)
     } catch (error) {
-      console.error('[v0] Error updating review:', error)
+      console.error('[EditReview] Error updating review:', error)
       router.push(`/book/${bookId}`)
     } finally {
       setSaving(false)
     }
   }
-  
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -133,155 +153,171 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
       </div>
     )
   }
-  
+
   if (!book) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-muted-foreground">Libro no encontrado</p>
+        <p className="text-muted-foreground">No se encontró la reseña</p>
       </div>
     )
   }
-  
+
+  // para la preview usamos primero lo que está editando el usuario
+  const displayCover =
+    coverUrl ||
+    book.urlCover ||
+    (book.b64Cover ? `data:image/png;base64,${book.b64Cover}` : null)
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
+      {/* Back button + title */}
       <div className="flex items-center gap-3 mb-6">
         <Link href={`/book/${bookId}`} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-6 w-6" />
         </Link>
-        <PageTitle className="mb-0">
-          Editar Reseña
-        </PageTitle>
+        <PageTitle className="mb-0">Editar Reseña</PageTitle>
       </div>
-      
+
       {/* Book Info Card */}
       <Card className="mb-6">
         <CardContent className="p-4">
-          <div className="flex gap-4 items-center">
-            {book.url_cover || book.b64_cover ? (
-              <img
-                src={book.url_cover || `data:image/png;base64,${book.b64_cover}`}
-                alt={book.title}
-                className="w-16 h-24 object-cover rounded-md shadow-sm flex-shrink-0"
-              />
-            ) : (
-              <div className="w-16 h-24 bg-secondary rounded-md flex items-center justify-center flex-shrink-0">
-                <BookOpen className="h-8 w-8 text-muted-foreground" />
-              </div>
-            )}
+          <div className="flex gap-4 items-start">
+            <div className="relative">
+              {displayCover ? (
+                <img
+                  src={displayCover}
+                  alt={book.title}
+                  className="w-16 h-24 object-cover rounded-md shadow-sm"
+                />
+              ) : (
+                <div className="w-16 h-24 bg-secondary rounded-md flex items-center justify-center">
+                  <BookOpen className="h-8 w-8 text-muted-foreground" />
+                </div>
+              )}
+
+              {/* Botón lápiz para editar URL de portada */}
+              <button
+                type="button"
+                onClick={() => setEditingCover((prev) => !prev)}
+                className="absolute -right-2 -bottom-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background shadow border border-border hover:bg-muted transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
             <div className="flex-1 min-w-0">
               <h2 className="font-semibold text-lg line-clamp-2">{book.title}</h2>
               <p className="text-sm text-muted-foreground">{book.author}</p>
+
+              {/* Campo URL de portada */}
+              {editingCover && (
+                <div className="mt-3 space-y-1">
+                  <Label htmlFor="coverUrl" className="text-xs text-muted-foreground">
+                    URL de la portada
+                  </Label>
+                  <Input
+                    id="coverUrl"
+                    type="url"
+                    placeholder="https://ejemplo.com/portada.jpg"
+                    value={coverUrl}
+                    onChange={(e) => setCoverUrl(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Si completás este campo se actualizará la imagen de portada del libro. Si lo
+                    dejás vacío, se eliminará.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
-      
-      {/* Edit Form */}
+
+      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Detalles de la Reseña</CardTitle>
           </CardHeader>
+
           <CardContent className="space-y-6">
             {/* Rating */}
             <div className="space-y-2">
               <Label>Calificación *</Label>
-              <StarRating rating={rating} onRatingChange={setRating} size="lg"/>
+              <StarRating rating={rating} onRatingChange={setRating} size="lg" />
             </div>
-            
-            {/* Reading Dates */}
-            <div className="space-y-4 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-4">
-              <div className="space-y-2 w-full max-w-full px-4 sm:px-0">
-                <Label htmlFor="startDate">Fecha de inicio</Label>
+
+            {/* Dates */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Fecha de inicio</Label>
                 <Input
-                  id="startDate"
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full max-w-full"
                 />
               </div>
-              
-              <div className="space-y-2 w-full max-w-full px-4 sm:px-0">
-                <Label htmlFor="endDate">Fecha de finalización</Label>
+
+              <div className="space-y-2">
+                <Label>Fecha de fin</Label>
                 <Input
-                  id="endDate"
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full max-w-full"
                 />
               </div>
             </div>
-            
+
             {/* Review Text */}
             <div className="space-y-2">
-              <Label htmlFor="review">Tu Reseña</Label>
+              <Label>Tu reseña</Label>
               <Textarea
-                id="review"
-                placeholder="¿Qué te pareció este libro? Comparte tus pensamientos, personajes favoritos, momentos memorables..."
+                className="min-h-[300px]"
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
-                className="min-h-[400px] text-base leading-relaxed resize-y"
               />
             </div>
           </CardContent>
         </Card>
-        
-        {/* Favorite Quotes section */}
-        <Card className="bg-background">
-          <CardContent className="p-5">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-base font-semibold">
-                    Frases favoritas del libro
-                  </Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Guarda las frases que más te gustaron (opcional)
-                  </p>
-                </div>
+
+        {/* Quotes */}
+        <Card>
+          <CardContent className="p-5 space-y-4">
+            <div className="flex justify-between items-center">
+              <Label className="font-semibold">Frases Favoritas</Label>
+              <Button
+                type="button"               // 👈 IMPORTANTE: que NO sea submit
+                variant="outline"
+                size="sm"
+                onClick={addQuote}
+              >
+                <Plus className="h-4 w-4 mr-1" /> Agregar
+              </Button>
+            </div>
+
+            {quotes.map((quote, index) => (
+              <div key={index} className="flex gap-2">
+                <Textarea
+                  value={quote}
+                  onChange={(e) => updateQuote(index, e.target.value)}
+                  placeholder={`Frase ${index + 1}...`}
+                  className="min-h-[80px]"
+                />
                 <Button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addQuote}
-                  className="flex-shrink-0"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeQuote(index)}
                 >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Agregar
+                  <X className="h-5 w-5" />
                 </Button>
               </div>
-              
-              {quotes.length > 0 && (
-                <div className="space-y-3">
-                  {quotes.map((quote, index) => (
-                    <div key={index} className="flex gap-2 items-start">
-                      <Textarea
-                        value={quote}
-                        onChange={(e) => updateQuote(index, e.target.value)}
-                        placeholder={`Frase ${index + 1}...`}
-                        className="min-h-[80px] text-sm resize-y"
-                        rows={3}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeQuote(index)}
-                        className="flex-shrink-0 mt-1"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            ))}
           </CardContent>
         </Card>
-        
-        {/* Action Buttons */}
+
+        {/* Buttons */}
         <div className="flex gap-3">
           <Button
             type="button"
@@ -292,7 +328,7 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
           >
             Cancelar
           </Button>
-          
+
           <Button
             type="submit"
             className="flex-1 h-12"
@@ -300,12 +336,12 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
           >
             {saving ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
                 Guardando...
               </>
             ) : (
               <>
-                <Save className="h-4 w-4 mr-2" />
+                <Save className="h-5 w-5 mr-2" />
                 Guardar Cambios
               </>
             )}
@@ -313,23 +349,5 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
         </div>
       </form>
     </div>
-  )
-}
-
-function BookOpen({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-    </svg>
   )
 }

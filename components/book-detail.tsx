@@ -78,7 +78,7 @@ function mapApiReviewToBookWithReview(api: ReviewFromApi): BookWithReview {
 
   return {
     // campos de Book (types.ts)
-    id: String(book.id),
+    id: book.id,
     title: book.title,
     author: book.author,
     start_read_date: book.startReadDate ?? undefined,
@@ -90,8 +90,8 @@ function mapApiReviewToBookWithReview(api: ReviewFromApi): BookWithReview {
 
     // campo extra review
     review: {
-      id: String(api.id),
-      book_id: String(book.id),
+      id: api.id,
+      book_id: book.id,
       rating: api.rating,
       review_text: api.reviewText,
       created_at: api.createdAt,
