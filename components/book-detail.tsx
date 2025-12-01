@@ -181,9 +181,15 @@ export function BookDetail({ bookId }: { bookId: string }) {
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <header className="mb-6 flex items-center gap-3">
-        <Link href="/" className="text-muted-foreground hover:text-foreground">
+        {/* 🔙 ANTES: <Link href="/" ...> */}
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="text-muted-foreground hover:text-foreground"
+        >
           <ArrowLeft className="h-6 w-6" />
-        </Link>
+        </button>
+
         <h1 className="text-2xl font-bold">Detalles del Libro</h1>
       </header>
 
