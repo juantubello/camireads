@@ -39,7 +39,7 @@ environment:
 ### Environment Variables
 
 - `NEXT_PUBLIC_API_URL`: The base URL for your CamiReads backend API
-  - Default: `http://localhost:8080`
+  - Default: `http://192.168.1.11:8080`
   - For Docker networks: `http://camireads-api:8080`
   - For external hosts: `http://your-server-ip:8080`
 
@@ -95,7 +95,7 @@ npm run dev
 Set the backend URL in `.env.local`:
 
 \`\`\`
-NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_API_URL=http://192.168.1.11:8080
 \`\`\`
 
 ## Tech Stack
