@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: camireads-frontend
     ports:
-      - "3000:3000"
+      - "1313:3000"
     environment:
       # Configure the backend API URL
       # Update this to point to your actual backend service
