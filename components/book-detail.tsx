@@ -49,53 +49,26 @@ type ReviewFromApi = {
   }[]
 }
 
-const mockBook: BookWithReview = {
-  id: '1',
-  title: 'La Biblioteca de la Medianoche',
-  author: 'Matt Haig',
-  url_cover: '/midnight-library-book-cover.jpg',
-  has_url_cover: true,
-  start_read_date: '2024-01-01',
-  end_read_date: '2024-01-15',
-  created_at: '2024-01-01',
-  review: {
-    id: '1',
-    book_id: '1',
-    rating: 5,
-    review_text:
-      'Una hermosa exploración de las decisiones de la vida y los universos paralelos. Me encantó cada página. La protagonista, Nora, se encuentra en un lugar entre la vida y la muerte donde puede experimentar todas las vidas que podría haber vivido si hubiera tomado decisiones diferentes. Es profundamente conmovedor y filosófico.',
-    created_at: '2024-01-15',
-    quotes: [
-      'Nunca subestimes el gran poder del arrepentimiento.',
-      'Entre la vida y la muerte hay una biblioteca, y dentro de esa biblioteca, las estanterías llegan hasta el infinito.',
-    ],
-  },
-}
-
 // Mapper: de la response del backend a tu BookWithReview del front
 function mapApiReviewToBookWithReview(api: ReviewFromApi): BookWithReview {
   const { book } = api
 
   return {
-    // campos de Book (types.ts)
     id: book.id,
     title: book.title,
     author: book.author,
     start_read_date: book.startReadDate ?? undefined,
     end_read_date: book.endReadDate ?? undefined,
-    created_at: book.createdAt, // fecha de creación del libro
+    created_at: book.createdAt,
     has_url_cover: book.hasUrlCover,
     url_cover: book.urlCover ?? undefined,
     b64_cover: book.b64Cover ?? undefined,
-
-    // campo extra review
     review: {
       id: api.id,
       book_id: book.id,
       rating: api.rating,
       review_text: api.reviewText,
       created_at: api.createdAt,
-      // transformamos [{ quoteText }] -> string[]
       quotes: api.quotes?.map((q) => q.quoteText) ?? [],
     },
   }
@@ -103,7 +76,6 @@ function mapApiReviewToBookWithReview(api: ReviewFromApi): BookWithReview {
 
 function stripHtml(html: string): string {
   if (!html) return ''
-  // Reemplazamos <br> por saltos de línea y sacamos el resto de tags
   return html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<[^>]+>/g, '')
@@ -114,6 +86,7 @@ export function BookDetail({ bookId }: { bookId: string }) {
   const [book, setBook] = useState<BookWithReview | null>(null)
   const [loading, setLoading] = useState(true)
   const [isReviewExpanded, setIsReviewExpanded] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     fetchBook()
@@ -122,7 +95,6 @@ export function BookDetail({ bookId }: { bookId: string }) {
 
   async function fetchBook() {
     try {
-      // ahora apuntamos al endpoint de reviews por bookId
       const response = await fetch(`${API_BASE_URL}/reviews/book/${bookId}`)
 
       if (!response.ok) {
@@ -133,8 +105,7 @@ export function BookDetail({ bookId }: { bookId: string }) {
       const mapped = mapApiReviewToBookWithReview(data)
       setBook(mapped)
     } catch (error) {
-      console.log('[v0] Backend API not available, using mock data for preview')
-      setBook(mockBook)
+      console.log('[BookDetail] Backend API not available, using mock data for preview')
     } finally {
       setLoading(false)
     }
@@ -142,12 +113,22 @@ export function BookDetail({ bookId }: { bookId: string }) {
 
   async function handleDelete() {
     try {
-      // si tenés endpoint de borrado distinto, lo ajustás acá
-      await fetch(`${API_BASE_URL}/api/books/${bookId}`, { method: 'DELETE' })
+      setDeleting(true)
+      // NUEVO endpoint real de borrado
+      const resp = await fetch(`${API_BASE_URL}/reviews/book/${bookId}`, {
+        method: 'DELETE',
+      })
+
+      if (!resp.ok && resp.status !== 204) {
+        console.error('[BookDetail] Error deleting review, status:', resp.status)
+      }
+
       router.push('/')
     } catch (error) {
-      console.error('[v0] Error deleting book:', error)
+      console.error('[BookDetail] Error deleting review:', error)
       router.push('/')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -181,7 +162,6 @@ export function BookDetail({ bookId }: { bookId: string }) {
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <header className="mb-6 flex items-center gap-3">
-        {/* 🔙 ANTES: <Link href="/" ...> */}
         <button
           type="button"
           onClick={() => router.back()}
@@ -277,13 +257,11 @@ export function BookDetail({ bookId }: { bookId: string }) {
               <h3 className="text-lg font-semibold mb-3">Mi Reseña</h3>
               <div className="space-y-3">
                 {isReviewExpanded || !isReviewLong(book.review.review_text) ? (
-                  // Versión completa con <br/> interpretado
                   <div
                     className="text-foreground leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: book.review.review_text }}
                   />
                 ) : (
-                  // Versión truncada, sin HTML
                   <p className="text-foreground leading-relaxed whitespace-pre-wrap">
                     {getTruncatedReview(book.review.review_text)}
                   </p>
@@ -329,9 +307,22 @@ export function BookDetail({ bookId }: { bookId: string }) {
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" className="flex-1 h-12">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Eliminar
+              <Button
+                variant="destructive"
+                className="flex-1 h-12"
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Eliminando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar
+                  </>
+                )}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -343,8 +334,10 @@ export function BookDetail({ bookId }: { bookId: string }) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete}>Eliminar</AlertDialogAction>
+                <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} disabled={deleting}>
+                  Sí, eliminar
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
