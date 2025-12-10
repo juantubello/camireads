@@ -69,7 +69,8 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
 
   async function fetchReview() {
     try {
-      const response = await fetch(`${API_BASE_URL}/reviews/book/${bookId}`)
+      const baseUrl = await API_BASE_URL;  
+      const response = await fetch(`${baseUrl}/reviews/book/${bookId}`)
 
       if (!response.ok) throw new Error('Review not found')
 
@@ -130,8 +131,8 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
         // 🔹 SIEMPRE mandamos urlCover (vacía o no)
         urlCover: coverUrl.trim(),
       }
-
-      await fetch(`${API_BASE_URL}/reviews/book/${bookId}`, {
+      const baseUrl = await API_BASE_URL;  
+      await fetch(`${baseUrl}/reviews/book/${bookId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

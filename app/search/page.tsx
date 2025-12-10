@@ -148,7 +148,8 @@ export default function SearchPage() {
         params.append('readTo', toReadTo(endDate))
       }
 
-      const url = `${API_BASE_URL}/reviews?${params.toString()}`
+      const baseUrl = await API_BASE_URL;  
+      const url = `${baseUrl}/reviews?${params.toString()}`
       const response = await fetch(url)
 
       if (!response.ok) {

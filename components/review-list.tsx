@@ -65,8 +65,9 @@ async function fetchBooks(page: number) {
   }
 
   try {
+    const baseUrl = await API_BASE_URL;  
     const response = await fetch(
-      `${API_BASE_URL}/reviews/latest?page=${page}&size=${PAGE_SIZE}`
+      `${baseUrl}/reviews/latest?page=${page}&size=${PAGE_SIZE}`
     )
 
     if (!response.ok) {

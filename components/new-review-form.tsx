@@ -70,8 +70,8 @@ export function NewReviewForm() {
         reviewText: formData.reviewText || null,
         quotes: quotes.map((q) => q.trim()).filter((q) => q.length > 0),
       }
-
-      const response = await fetch(`${API_BASE_URL}/reviews`, {
+      const baseUrl = await API_BASE_URL;  
+      const response = await fetch(`${baseUrl}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

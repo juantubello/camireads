@@ -95,7 +95,8 @@ export function BookDetail({ bookId }: { bookId: string }) {
 
   async function fetchBook() {
     try {
-      const response = await fetch(`${API_BASE_URL}/reviews/book/${bookId}`)
+      const baseUrl = await API_BASE_URL;  
+      const response = await fetch(`${baseUrl}/reviews/book/${bookId}`)
 
       if (!response.ok) {
         throw new Error('Backend API not available')
@@ -115,7 +116,8 @@ export function BookDetail({ bookId }: { bookId: string }) {
     try {
       setDeleting(true)
       // NUEVO endpoint real de borrado
-      const resp = await fetch(`${API_BASE_URL}/reviews/book/${bookId}`, {
+      const baseUrl = await API_BASE_URL;  
+      const resp = await fetch(`${baseUrl}/reviews/book/${bookId}`, {
         method: 'DELETE',
       })
 
