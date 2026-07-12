@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -9,9 +9,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { StarRating } from '@/components/star-rating'
 import { BookAutocomplete } from '@/components/book-autocomplete'
-import { Plus, X, BookOpen, Pencil, Loader2 } from 'lucide-react'
+import { Plus, X, BookOpen, Pencil, Loader2, Upload } from 'lucide-react'
 import { API_BASE_URL } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
+import { mergeQuotes, parseKindleNotebookHtml } from '@/lib/quote-import'
 
 const TIME_SUFFIX = process.env.NEXT_PUBLIC_TIME_SUFFIX || 'T21:00:00-03:00'
 
@@ -35,6 +36,8 @@ export function NewReviewForm() {
 
   const [quotes, setQuotes] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const [importMessage, setImportMessage] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Estado para edición manual de portada
   const [editingCover, setEditingCover] = useState(false)
@@ -53,6 +56,28 @@ export function NewReviewForm() {
 
   const removeQuote = (index: number) => {
     setQuotes((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  async function handleImportQuotes(file: File | null) {
+    if (!file) return
+
+    try {
+      const html = await file.text()
+      const imported = parseKindleNotebookHtml(html)
+
+      if (imported.quotes.length === 0) {
+        setImportMessage('No encontré subrayados para importar en este archivo.')
+        return
+      }
+
+      setQuotes((prev) => mergeQuotes(prev, imported.quotes))
+      setImportMessage(`Importé ${imported.quotes.length} subrayados del archivo.`)
+    } catch (error) {
+      console.error('[NewReviewForm] Error importing quotes:', error)
+      setImportMessage('No pude leer el archivo. Probá con la exportación HTML de Kindle.')
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -270,7 +295,7 @@ export function NewReviewForm() {
         <Card className="bg-background">
           <CardContent className="p-5">
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <Label className="text-base font-semibold">
                     Frases favoritas del libro
@@ -279,17 +304,38 @@ export function NewReviewForm() {
                     Guarda las frases que más te gustaron (opcional)
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addQuote}
-                  className="flex-shrink-0"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Agregar
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".html,text/html"
+                    className="hidden"
+                    onChange={(event) => handleImportQuotes(event.target.files?.[0] ?? null)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    Importar Kindle
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addQuote}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Agregar
+                  </Button>
+                </div>
               </div>
+
+              {importMessage && (
+                <p className="text-sm text-muted-foreground">{importMessage}</p>
+              )}
 
               {quotes.length > 0 && (
                 <div className="space-y-3">

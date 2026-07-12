@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StarRating } from '@/components/star-rating'
 import { Book, Review } from '@/lib/types'
-import { ArrowLeft, Edit, Trash2, Loader2 } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Loader2, Copy, Check } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +19,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { API_BASE_URL } from '@/lib/api-config'
+import { buildReviewTextForAi } from '@/lib/review-export'
 
 interface BookWithReview extends Book {
   review?: Review
@@ -86,7 +86,10 @@ export function BookDetail({ bookId }: { bookId: string }) {
   const [book, setBook] = useState<BookWithReview | null>(null)
   const [loading, setLoading] = useState(true)
   const [isReviewExpanded, setIsReviewExpanded] = useState(false)
+  const [isReviewVisible, setIsReviewVisible] = useState(false)
+  const [areQuotesVisible, setAreQuotesVisible] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [copiedForAi, setCopiedForAi] = useState(false)
 
   useEffect(() => {
     fetchBook()
@@ -134,6 +137,26 @@ export function BookDetail({ bookId }: { bookId: string }) {
     }
   }
 
+  async function handleCopyForAi() {
+    if (!book) return
+
+    const text = buildReviewTextForAi({
+      title: book.title,
+      author: book.author,
+      rating: book.review?.rating,
+      reviewText: book.review?.review_text,
+      quotes: book.review?.quotes,
+    })
+
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedForAi(true)
+      window.setTimeout(() => setCopiedForAi(false), 2200)
+    } catch (error) {
+      console.error('[BookDetail] Error copying review for AI:', error)
+    }
+  }
+
   const isReviewLong = (html: string) => {
     const text = stripHtml(html)
     return text.length > 300 || text.split('\n').length > 5
@@ -160,6 +183,9 @@ export function BookDetail({ bookId }: { bookId: string }) {
       </div>
     )
   }
+
+  const hasReviewText = Boolean(book.review?.review_text?.trim())
+  const quotes = book.review?.quotes ?? []
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -224,126 +250,181 @@ export function BookDetail({ bookId }: { bookId: string }) {
                     )}
                   </div>
                 )}
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    className="h-11 flex-1 min-w-[150px]"
+                    onClick={handleCopyForAi}
+                  >
+                    {copiedForAi ? (
+                      <>
+                        <Check className="h-4 w-4 mr-2" />
+                        Copiado
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copiar para IA
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-11 flex-1 min-w-[150px]"
+                    onClick={() => router.push(`/edit/${bookId}`)}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Editar Reseña
+                  </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="destructive"
+                        className="h-11 w-11 shrink-0 p-0"
+                        disabled={deleting}
+                        aria-label="Eliminar libro"
+                        title="Eliminar libro"
+                      >
+                        {deleting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>¿Seguro que querés eliminar este libro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta acción va a borrar permanentemente &ldquo;{book.title}&rdquo;, su reseña y sus
+                          frases favoritas. No se puede deshacer.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDelete} disabled={deleting}>
+                          Sí, eliminar
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Favorite Quotes */}
-        {book.review?.quotes && book.review.quotes.length > 0 && (
-          <Card className="bg-secondary/30">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                Frases Favoritas ✨
-              </h3>
-              <div className="space-y-4">
-                {book.review.quotes.map((quote, index) => (
-                  <div
-                    key={index}
-                    className="bg-background/60 border border-border/50 rounded-lg p-4 shadow-sm"
-                  >
-                    <p className="italic text-foreground/90 leading-relaxed">
-                      &ldquo;{quote}&rdquo;
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Review */}
-        {book.review?.review_text && (
+        {hasReviewText && book.review?.review_text && (
           <Card>
             <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-3">Mi Reseña</h3>
-              <div className="space-y-3">
-                {isReviewExpanded || !isReviewLong(book.review.review_text) ? (
-                  <div
-                    className="text-foreground leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: book.review.review_text }}
-                  />
-                ) : (
-                  <p className="text-foreground leading-relaxed whitespace-pre-wrap">
-                    {getTruncatedReview(book.review.review_text)}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Mi Reseña</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {isReviewVisible ? 'La reseña está visible.' : 'La reseña está oculta.'}
                   </p>
-                )}
+                </div>
 
-                {isReviewLong(book.review.review_text) && (
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setIsReviewExpanded(!isReviewExpanded)}
-                      className="text-sm text-primary hover:underline font-medium"
-                    >
-                      {isReviewExpanded ? 'Ver menos' : 'Ver más'}
-                    </button>
-
-                    {!isReviewExpanded && (
-                      <>
-                        <span className="text-muted-foreground text-sm">•</span>
-                        <button
-                          onClick={() => setIsReviewExpanded(true)}
-                          className="text-sm text-primary hover:underline font-medium"
-                        >
-                          Ver reseña completa
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsReviewVisible((visible) => !visible)
+                    if (isReviewVisible) setIsReviewExpanded(false)
+                  }}
+                >
+                  {isReviewVisible ? 'Ocultar' : 'Mostrar'}
+                </Button>
               </div>
+
+              {isReviewVisible && (
+                <div className="mt-4 space-y-3">
+                  {isReviewExpanded || !isReviewLong(book.review.review_text) ? (
+                    <div
+                      className="text-foreground leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: book.review.review_text }}
+                    />
+                  ) : (
+                    <p className="text-foreground leading-relaxed whitespace-pre-wrap">
+                      {getTruncatedReview(book.review.review_text)}
+                    </p>
+                  )}
+
+                  {isReviewLong(book.review.review_text) && (
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setIsReviewExpanded(!isReviewExpanded)}
+                        className="text-sm text-primary hover:underline font-medium"
+                      >
+                        {isReviewExpanded ? 'Ver menos' : 'Ver más'}
+                      </button>
+
+                      {!isReviewExpanded && (
+                        <>
+                          <span className="text-muted-foreground text-sm">•</span>
+                          <button
+                            onClick={() => setIsReviewExpanded(true)}
+                            className="text-sm text-primary hover:underline font-medium"
+                          >
+                            Ver reseña completa
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-3">
-          <Button
-            variant="outline"
-            className="flex-1 h-12"
-            onClick={() => router.push(`/edit/${bookId}`)}
-          >
-            <Edit className="h-4 w-4 mr-2" />
-            Editar Reseña
-          </Button>
+        {/* Favorite Quotes */}
+        {quotes.length > 0 && (
+          <Card className="bg-secondary/30">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    Frases Favoritas ✨
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {areQuotesVisible
+                      ? `${quotes.length} frases visibles.`
+                      : `${quotes.length} frases ocultas.`}
+                  </p>
+                </div>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="destructive"
-                className="flex-1 h-12"
-                disabled={deleting}
-              >
-                {deleting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Eliminando...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Eliminar
-                  </>
-                )}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>¿Eliminar este libro?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Esto eliminará permanentemente &ldquo;{book.title}&rdquo; y su reseña. Esta
-                  acción no se puede deshacer.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} disabled={deleting}>
-                  Sí, eliminar
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAreQuotesVisible((visible) => !visible)}
+                >
+                  {areQuotesVisible ? 'Ocultar' : 'Mostrar'}
+                </Button>
+              </div>
+
+              {areQuotesVisible && (
+                <div className="mt-4 space-y-4">
+                  {quotes.map((quote, index) => (
+                    <div
+                      key={index}
+                      className="bg-background/60 border border-border/50 rounded-lg p-4 shadow-sm"
+                    >
+                      <p className="italic text-foreground/90 leading-relaxed">
+                        &ldquo;{quote}&rdquo;
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
       </div>
     </div>
   )

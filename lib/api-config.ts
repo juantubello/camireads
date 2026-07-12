@@ -1,7 +1,7 @@
 // api-config.ts
 
+const ENV_URL = process.env.NEXT_PUBLIC_API_URL;
 const LAN_URL = "http://192.168.1.87:9095";
-const VPN_URL = "http://100.72.146.39:9095";
 
 let resolvedUrl: string | null = null;
 
@@ -22,19 +22,18 @@ async function probe(url: string, timeout = 1200): Promise<boolean> {
 export async function getApiBaseUrl(): Promise<string> {
   if (resolvedUrl) return resolvedUrl;
 
+  if (ENV_URL) {
+    resolvedUrl = ENV_URL;
+    return ENV_URL;
+  }
+
   const lanOk = await probe(LAN_URL);
   if (lanOk) {
     resolvedUrl = LAN_URL;
     return LAN_URL;
   }
 
-  const vpnOk = await probe(VPN_URL);
-  if (vpnOk) {
-    resolvedUrl = VPN_URL;
-    return VPN_URL;
-  }
-
-  throw new Error("No se pudo conectar al backend. ¿Estás fuera de casa sin VPN?");
+  throw new Error("No se pudo conectar al backend.");
 }
 
 export const API_BASE_URL = getApiBaseUrl();
