@@ -5,16 +5,18 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY package.json pnpm-lock.yaml* package-lock.json* yarn.lock* ./
+COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* .npmrc* ./
 
 # Install dependencies (supports npm, yarn, or pnpm)
 RUN \
-  if [ -f pnpm-lock.yaml ]; then \
-    corepack enable pnpm && pnpm install --no-frozen-lockfile; \
+  if [ -f package-lock.json ]; then \
+    npm ci; \
+  elif [ -f pnpm-lock.yaml ]; then \
+    corepack prepare pnpm@10.17.1 --activate && pnpm install --no-frozen-lockfile; \
   elif [ -f yarn.lock ]; then \
     yarn install --frozen-lockfile; \
   else \
-    npm ci; \
+    npm install; \
   fi
 
 # Copy source code
@@ -23,8 +25,10 @@ COPY . .
 # Build the application
 # The NEXT_PUBLIC_API_URL will be set at runtime via environment variable
 RUN \
-  if [ -f pnpm-lock.yaml ]; then \
-    corepack enable pnpm && pnpm run build; \
+  if [ -f package-lock.json ]; then \
+    npm run build; \
+  elif [ -f pnpm-lock.yaml ]; then \
+    corepack prepare pnpm@10.17.1 --activate && pnpm run build; \
   elif [ -f yarn.lock ]; then \
     yarn build; \
   else \
