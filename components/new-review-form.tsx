@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { StarRating } from '@/components/star-rating'
 import { BookAutocomplete } from '@/components/book-autocomplete'
 import { Plus, X, BookOpen, Pencil, Loader2, Upload } from 'lucide-react'
-import { API_BASE_URL } from '@/lib/api-config'
+import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
 import { mergeQuotes, parseKindleNotebookHtml } from '@/lib/quote-import'
 
@@ -98,7 +98,7 @@ export function NewReviewForm() {
       const baseUrl = await API_BASE_URL;  
       const response = await fetch(`${baseUrl}/reviews`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getApiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
 

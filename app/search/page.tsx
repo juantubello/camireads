@@ -14,7 +14,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { StarRating } from '@/components/star-rating'
 import { PageTitle } from '@/components/page-title'
-import { API_BASE_URL } from '@/lib/api-config'
+import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
 
 const TIME_SUFFIX = process.env.NEXT_PUBLIC_TIME_SUFFIX || 'T21:00:00-03:00'
 // De "T21:00:00-03:00" me quedo con el offset "-03:00"
@@ -150,7 +150,7 @@ export default function SearchPage() {
 
       const baseUrl = await API_BASE_URL;  
       const url = `${baseUrl}/reviews?${params.toString()}`
-      const response = await fetch(url)
+      const response = await fetch(url, { headers: getApiHeaders() })
 
       if (!response.ok) {
         throw new Error(`Error ${response.status} al buscar reseñas`)

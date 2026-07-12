@@ -4,6 +4,13 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+ARG NEXT_PUBLIC_API_URL=/api
+ARG NEXT_PUBLIC_CF_ACCESS_CLIENT_ID=
+ARG NEXT_PUBLIC_CF_ACCESS_CLIENT_SECRET=
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_CF_ACCESS_CLIENT_ID=$NEXT_PUBLIC_CF_ACCESS_CLIENT_ID
+ENV NEXT_PUBLIC_CF_ACCESS_CLIENT_SECRET=$NEXT_PUBLIC_CF_ACCESS_CLIENT_SECRET
+
 # Copy package files
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* .npmrc* ./
 
@@ -23,7 +30,7 @@ RUN \
 COPY . .
 
 # Build the application
-# The NEXT_PUBLIC_API_URL will be set at runtime via environment variable
+# NEXT_PUBLIC_API_URL is inlined by Next.js during build for client-side code.
 RUN \
   if [ -f package-lock.json ]; then \
     npm run build; \
@@ -52,8 +59,8 @@ COPY --from=builder /app/.next/static ./.next/static
 # Expose the port Next.js runs on
 EXPOSE 3000
 
-# Set default API URL (can be overridden at runtime)
-ENV NEXT_PUBLIC_API_URL=http://localhost:8080
+# Set default API URL for any runtime-side reads.
+ENV NEXT_PUBLIC_API_URL=/api
 
 # Start the Next.js application
 CMD ["node", "server.js"]

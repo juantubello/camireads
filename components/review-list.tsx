@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { StarRating } from '@/components/star-rating'
 import { Book, Review, PaginatedResponse } from '@/lib/types'
 import { Loader2 } from 'lucide-react'
-import { API_BASE_URL } from '@/lib/api-config'
+import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
 
 type ReviewFromApi = {
@@ -67,7 +67,8 @@ async function fetchBooks(page: number) {
   try {
     const baseUrl = await API_BASE_URL;  
     const response = await fetch(
-      `${baseUrl}/reviews/latest?page=${page}&size=${PAGE_SIZE}`
+      `${baseUrl}/reviews/latest?page=${page}&size=${PAGE_SIZE}`,
+      { headers: getApiHeaders() }
     )
 
     if (!response.ok) {

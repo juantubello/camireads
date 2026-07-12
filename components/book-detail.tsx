@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { API_BASE_URL } from '@/lib/api-config'
+import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
 import { buildReviewTextForAi } from '@/lib/review-export'
 
 interface BookWithReview extends Book {
@@ -99,7 +99,9 @@ export function BookDetail({ bookId }: { bookId: string }) {
   async function fetchBook() {
     try {
       const baseUrl = await API_BASE_URL;  
-      const response = await fetch(`${baseUrl}/reviews/book/${bookId}`)
+      const response = await fetch(`${baseUrl}/reviews/book/${bookId}`, {
+        headers: getApiHeaders(),
+      })
 
       if (!response.ok) {
         throw new Error('Backend API not available')
@@ -122,6 +124,7 @@ export function BookDetail({ bookId }: { bookId: string }) {
       const baseUrl = await API_BASE_URL;  
       const resp = await fetch(`${baseUrl}/reviews/book/${bookId}`, {
         method: 'DELETE',
+        headers: getApiHeaders(),
       })
 
       if (!resp.ok && resp.status !== 204) {

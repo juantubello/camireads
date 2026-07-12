@@ -50,6 +50,7 @@ Thumbs.db
 # Docker artifacts
 docker-volume/
 *.dockerignore
+!.dockerignore
 
 # Debug
 npm-debug.log*

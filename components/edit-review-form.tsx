@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { StarRating } from '@/components/star-rating'
 import { ArrowLeft, Loader2, Save, Plus, X, BookOpen, Pencil, Upload } from 'lucide-react'
-import { API_BASE_URL } from '@/lib/api-config'
+import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
 import { mergeQuotes, parseKindleNotebookHtml } from '@/lib/quote-import'
 
@@ -73,7 +73,9 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
   async function fetchReview() {
     try {
       const baseUrl = await API_BASE_URL;  
-      const response = await fetch(`${baseUrl}/reviews/book/${bookId}`)
+      const response = await fetch(`${baseUrl}/reviews/book/${bookId}`, {
+        headers: getApiHeaders(),
+      })
 
       if (!response.ok) throw new Error('Review not found')
 
@@ -159,7 +161,7 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
       const baseUrl = await API_BASE_URL;  
       await fetch(`${baseUrl}/reviews/book/${bookId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getApiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
 
