@@ -445,7 +445,7 @@ export function NewReviewForm() {
                 }
                 rows={16}
                 placeholder="Escribe aquí tu reseña..."
-                className="min-h-[400px] text-base leading-relaxed resize-y"
+                className="min-h-[400px] max-h-[55vh] overflow-y-auto text-base leading-relaxed resize-y"
               />
             </div>
           </CardContent>

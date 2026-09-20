@@ -475,23 +475,19 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
               </div>
             </div>
 
+            {/* Tags */}
+            <TagPicker value={tags} onChange={setTags} />
+
             {/* Review Text */}
             <div className="space-y-2">
               <Label htmlFor="edit_review">Tu reseña</Label>
               <Textarea
                 id="edit_review"
-                className="min-h-[300px] text-base leading-relaxed resize-y"
+                className="min-h-[300px] max-h-[55vh] overflow-y-auto text-base leading-relaxed resize-y"
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
               />
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Tags */}
-        <Card>
-          <CardContent className="p-5">
-            <TagPicker value={tags} onChange={setTags} />
           </CardContent>
         </Card>
 
