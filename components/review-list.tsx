@@ -9,6 +9,11 @@ import { Book, Review, PaginatedResponse } from '@/lib/types'
 import { Loader2 } from 'lucide-react'
 import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
+import { TagChip } from '@/components/tag-chip'
+import type { BookTag } from '@/lib/tags'
+
+/** Cuántos chips se muestran antes del "+N". Más de 2 empuja el alto de la tarjeta. */
+const MAX_VISIBLE_TAGS = 2
 
 type ReviewFromApi = {
   id: number
@@ -25,6 +30,7 @@ type ReviewFromApi = {
     endReadDate?: string | null
     createdAt?: string | null    // fecha del libro en la BD
     b64Cover?: string | null
+    tags?: BookTag[] | null      // viene embebido en /reviews/latest
   }
 }
 
@@ -40,6 +46,7 @@ type SpringPage<T> = {
 
 interface BookWithReview extends Book {
   review?: Review
+  tags?: BookTag[]
 }
 
 export function ReviewList() {
@@ -115,6 +122,7 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
     has_url_cover: book.hasUrlCover ?? false,
     url_cover: book.urlCover ?? undefined,
     b64_cover: book.b64Cover ?? undefined,
+    tags: book.tags ?? [],
     review: {
       id: review.id,
       book_id: book.id,
@@ -148,7 +156,7 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
   }
   
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
+    <div className="max-w-2xl md:max-w-5xl xl:max-w-6xl mx-auto px-4 md:px-6 py-6">
       <PageTitle subtitle="Tu viaje personal de lectura">
         CamiReads
       </PageTitle>
@@ -159,10 +167,12 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
         </p>
       )}
       
-      <div className="space-y-2">
+      {/* Mobile: lista vertical de siempre. Desktop: grilla 2 col (md) / 3 col (xl).
+          Los `md:` no aplican por debajo de 768px, así que mobile queda intacto. */}
+      <div className="space-y-2 md:space-y-0 md:grid md:grid-cols-2 md:gap-3 xl:grid-cols-3">
         {books.map((book) => (
-          <Link key={book.id} href={`/book/${book.id}`}>
-            <Card className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden">
+          <Link key={book.id} href={`/book/${book.id}`} className="md:h-full">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden md:h-full">
               <CardContent className="p-0">
                 <div className="flex gap-2.5 p-2.5">
                   <div className="flex-shrink-0">
@@ -197,14 +207,35 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
                         
                         {book.review.created_at && (
                           <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                            {new Date(book.review.created_at).toLocaleDateString('es-ES', { 
-                              year: 'numeric', 
-                              month: 'short', 
-                              day: 'numeric' 
+                            {new Date(book.review.created_at).toLocaleDateString('es-ES', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
                             })}
                           </p>
                         )}
                       </>
+                    )}
+
+                    {/* Tags del libro. Chips `xs` y como mucho 2 + "+N": la tarjeta
+                        es angosta y en desktop la grilla empareja alturas con
+                        `md:h-full`, así que conviene que no crezca de más. */}
+                    {book.tags && book.tags.length > 0 && (
+                      <ul
+                        className="flex flex-wrap items-center gap-1 mt-1"
+                        aria-label={`Tags: ${book.tags.map((t) => t.name).join(', ')}`}
+                      >
+                        {book.tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
+                          <li key={tag.id}>
+                            <TagChip tag={tag} size="xs" />
+                          </li>
+                        ))}
+                        {book.tags.length > MAX_VISIBLE_TAGS && (
+                          <li className="text-[11px] leading-[1.35] text-muted-foreground">
+                            +{book.tags.length - MAX_VISIBLE_TAGS}
+                          </li>
+                        )}
+                      </ul>
                     )}
                   </div>
                 </div>

@@ -16,9 +16,22 @@ interface BookAutocompleteProps {
   value: string
   onValueChange: (value: string) => void
   onBookSelect: (book: { title: string; author: string; cover_url?: string }) => void
+  /** id del <input>, para poder asociarle un <Label htmlFor> */
+  id?: string
+  /** clases extra del <input> (alto táctil, tipografía) */
+  className?: string
+  /** ref al <input>, para mandarle el foco cuando falta completarlo */
+  inputRef?: React.Ref<HTMLInputElement>
 }
 
-export function BookAutocomplete({ value, onValueChange, onBookSelect }: BookAutocompleteProps) {
+export function BookAutocomplete({
+  value,
+  onValueChange,
+  onBookSelect,
+  id,
+  className,
+  inputRef,
+}: BookAutocompleteProps) {
   const [results, setResults] = useState<OpenLibraryBook[]>([])
   const [loading, setLoading] = useState(false)
   const [showResults, setShowResults] = useState(false)
@@ -88,6 +101,9 @@ export function BookAutocomplete({ value, onValueChange, onBookSelect }: BookAut
   return (
     <div className="relative" ref={containerRef}>
       <Input
+        id={id}
+        ref={inputRef}
+        className={className}
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         onFocus={() => {

@@ -1,8 +1,8 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
-import { BottomNav } from '@/components/bottom-nav'
+import { AppNav } from '@/components/app-nav'
 
 const geist = Geist({ subsets: ["latin"] });
 
@@ -27,12 +27,16 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
+}
+
+// En Next 16 `viewport` y `themeColor` ya no van dentro de `metadata`.
+// `viewportFit: 'cover'` es lo que hace que `env(safe-area-inset-*)` devuelva
+// valores reales en iPhone; sin eso siempre da 0.
+// No se limita el zoom: bloquearlo es un antipatrón de accesibilidad.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
   themeColor: '#F5F1ED',
 }
 
@@ -42,10 +46,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body className={`${geist.className} font-sans antialiased`}>
         {children}
-        <BottomNav />
+        <AppNav />
         <Analytics />
       </body>
     </html>

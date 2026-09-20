@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,10 +9,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { StarRating } from '@/components/star-rating'
-import { ArrowLeft, Loader2, Save, Plus, X, BookOpen, Pencil, Upload } from 'lucide-react'
-import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
+import { TagPicker } from '@/components/tag-picker'
+import { FormSaveBar } from '@/components/form-save-bar'
+import { DraftBanner } from '@/components/draft-banner'
+import { ArrowLeft, Loader2, Plus, X, BookOpen, ImagePlus, Upload } from 'lucide-react'
+import { API_BASE_URL, getApiHeaders, readApiError } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
 import { mergeQuotes, parseKindleNotebookHtml } from '@/lib/quote-import'
+import { saveBookTags, toSelection, type BookTag, type TagSelection } from '@/lib/tags'
+import { useFormDraft } from '@/hooks/use-form-draft'
+import { editReviewDraftKey } from '@/lib/draft-storage'
 
 interface ReviewQuoteResponse {
   id: number
@@ -36,7 +42,18 @@ interface ReviewResponse {
     hasUrlCover: boolean
     urlCover: string | null
     b64Cover: string | null
+    tags?: BookTag[]
   }
+}
+
+interface EditReviewDraft {
+  rating: number
+  reviewText: string
+  startDate: string
+  endDate: string
+  coverUrl: string
+  quotes: string[]
+  tags: TagSelection[]
 }
 
 const TIME_SUFFIX = process.env.NEXT_PUBLIC_TIME_SUFFIX || 'T21:00:00-03:00'
@@ -46,12 +63,21 @@ function toBackendDate(dateString: string | null): string | null {
   return `${dateString}${TIME_SUFFIX}`
 }
 
+function tagSignature(tags: TagSelection[]): string {
+  return tags
+    .map((t) => (t.id !== null ? `id:${t.id}` : `new:${t.slug}`))
+    .sort()
+    .join('|')
+}
+
 export function EditReviewForm({ bookId }: { bookId: string }) {
   const router = useRouter()
 
   const [book, setBook] = useState<ReviewResponse['book'] | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   // Form fields
   const [rating, setRating] = useState(0)
@@ -59,57 +85,107 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [quotes, setQuotes] = useState<string[]>([])
+  const [tags, setTags] = useState<TagSelection[]>([])
   const [importMessage, setImportMessage] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const ratingRef = useRef<HTMLDivElement>(null)
 
   // URL portada
   const [coverUrl, setCoverUrl] = useState('')
   const [editingCover, setEditingCover] = useState(false)
 
+  // Snapshot de lo que vino del backend, para saber si hay cambios sin guardar.
+  const [baseline, setBaseline] = useState<string | null>(null)
+
   useEffect(() => {
     fetchReview()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId])
 
   async function fetchReview() {
     try {
-      const baseUrl = await API_BASE_URL;  
+      const baseUrl = await API_BASE_URL
       const response = await fetch(`${baseUrl}/reviews/book/${bookId}`, {
         headers: getApiHeaders(),
       })
 
-      if (!response.ok) throw new Error('Review not found')
+      if (!response.ok) {
+        setLoadError(await readApiError(response, 'No pude traer la reseña.'))
+        return
+      }
 
       const data: ReviewResponse = await response.json()
       populateForm(data)
     } catch (error) {
       console.error('[EditReview] Error fetching review:', error)
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'No pude conectarme al backend para traer la reseña.',
+      )
     } finally {
       setLoading(false)
     }
   }
 
   function populateForm(data: ReviewResponse) {
-    // REVIEW
+    const initialTags = (data.book.tags ?? []).map(toSelection)
+    const initialQuotes =
+      data.quotes && Array.isArray(data.quotes)
+        ? data.quotes.map((q) => q.quoteText)
+        : []
+
     setRating(data.rating)
     setReviewText(data.reviewText ?? '')
-
-    // BOOK
     setBook(data.book)
-
     setStartDate(data.book.startReadDate?.slice(0, 10) || '')
     setEndDate(data.book.endReadDate?.slice(0, 10) || '')
-
-    // Portada
     setCoverUrl(data.book.urlCover ?? '')
+    setQuotes(initialQuotes)
+    setTags(initialTags)
 
-    // QUOTES → convert objects to simple strings
-    if (data.quotes && Array.isArray(data.quotes)) {
-      setQuotes(data.quotes.map((q) => q.quoteText))
-    } else {
-      setQuotes([])
-    }
+    setBaseline(
+      JSON.stringify({
+        rating: data.rating,
+        reviewText: data.reviewText ?? '',
+        startDate: data.book.startReadDate?.slice(0, 10) || '',
+        endDate: data.book.endReadDate?.slice(0, 10) || '',
+        coverUrl: data.book.urlCover ?? '',
+        quotes: initialQuotes,
+        tags: initialTags,
+      } satisfies EditReviewDraft),
+    )
   }
 
+  // ---------------------------------------------------------------- borrador
+  const draftData = useMemo<EditReviewDraft>(
+    () => ({ rating, reviewText, startDate, endDate, coverUrl, quotes, tags }),
+    [rating, reviewText, startDate, endDate, coverUrl, quotes, tags],
+  )
+
+  const dirty = baseline !== null && JSON.stringify(draftData) !== baseline
+
+  const { pendingDraft, savedAt, restore, discard, clear } =
+    useFormDraft<EditReviewDraft>({
+      storageKey: editReviewDraftKey(bookId),
+      data: draftData,
+      dirty,
+      enabled: baseline !== null,
+    })
+
+  function handleRestoreDraft() {
+    const restored = restore()
+    if (!restored) return
+    setRating(restored.rating ?? 0)
+    setReviewText(restored.reviewText ?? '')
+    setStartDate(restored.startDate ?? '')
+    setEndDate(restored.endDate ?? '')
+    setCoverUrl(restored.coverUrl ?? '')
+    setQuotes(restored.quotes ?? [])
+    setTags(restored.tags ?? [])
+  }
+
+  // ------------------------------------------------------------------ quotes
   const addQuote = () => setQuotes([...quotes, ''])
 
   const updateQuote = (index: number, value: string) => {
@@ -143,12 +219,33 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  // ------------------------------------------------------------------ submit
+  const missing: string[] = []
+  if (rating === 0) missing.push('la calificación')
+
+  const initialTagSignature = useMemo(() => {
+    if (!baseline) return ''
+    try {
+      return tagSignature((JSON.parse(baseline) as EditReviewDraft).tags ?? [])
+    } catch {
+      return ''
+    }
+  }, [baseline])
+
+  const submit = useCallback(async () => {
+    if (saving) return
+
+    if (rating === 0) {
+      setSubmitError(null)
+      ratingRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
+
     setSaving(true)
+    setSubmitError(null)
 
     try {
-      const payload: any = {
+      const payload = {
         rating,
         reviewText: reviewText || null,
         startReadDate: toBackendDate(startDate || null),
@@ -158,21 +255,79 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
         // 🔹 SIEMPRE mandamos urlCover (vacía o no)
         urlCover: coverUrl.trim(),
       }
-      const baseUrl = await API_BASE_URL;  
-      await fetch(`${baseUrl}/reviews/book/${bookId}`, {
+
+      const baseUrl = await API_BASE_URL
+      const response = await fetch(`${baseUrl}/reviews/book/${bookId}`, {
         method: 'PUT',
         headers: getApiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
 
+      if (!response.ok) {
+        // Antes esto se tragaba el error y navegaba igual, así que un guardado
+        // fallido parecía exitoso.
+        setSubmitError(await readApiError(response, 'No pude guardar los cambios.'))
+        return
+      }
+
+      if (tagSignature(tags) !== initialTagSignature) {
+        try {
+          await saveBookTags(bookId, tags)
+        } catch (error) {
+          setSubmitError(
+            `Guardé la reseña, pero no pude guardar los tags: ${
+              error instanceof Error ? error.message : 'error desconocido'
+            }`,
+          )
+          return
+        }
+      }
+
+      clear()
       router.push(`/book/${bookId}`)
     } catch (error) {
       console.error('[EditReview] Error updating review:', error)
-      router.push(`/book/${bookId}`)
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : 'No pude conectarme al backend para guardar los cambios.',
+      )
     } finally {
       setSaving(false)
     }
+  }, [
+    bookId,
+    clear,
+    coverUrl,
+    endDate,
+    initialTagSignature,
+    quotes,
+    rating,
+    reviewText,
+    router,
+    saving,
+    startDate,
+    tags,
+  ])
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    void submit()
   }
+
+  // ⌘S / Ctrl+S en desktop
+  const submitRef = useRef(submit)
+  submitRef.current = submit
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        void submitRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   if (loading) {
     return (
@@ -184,8 +339,14 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
 
   if (!book) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-muted-foreground">No se encontró la reseña</p>
+      <div className="mx-auto max-w-2xl px-5 py-10 text-center">
+        <p className="font-medium text-foreground">No se encontró la reseña</p>
+        {loadError && (
+          <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
+        )}
+        <Button className="mt-6 h-11" onClick={() => router.push('/')}>
+          Volver a mis reseñas
+        </Button>
       </div>
     )
   }
@@ -197,68 +358,81 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
     (book.b64Cover ? `data:image/png;base64,${book.b64Cover}` : null)
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
+    <div className="max-w-2xl mx-auto px-5 py-6">
       {/* Back button + title */}
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/" className="text-muted-foreground hover:text-foreground">
+        <Link
+          href={`/book/${bookId}`}
+          aria-label="Volver al libro"
+          className="text-muted-foreground hover:text-foreground"
+        >
           <ArrowLeft className="h-6 w-6" />
         </Link>
         <PageTitle className="mb-0">Editar Reseña</PageTitle>
       </div>
 
+      {pendingDraft && (
+        <DraftBanner
+          savedAt={pendingDraft.savedAt}
+          onRestore={handleRestoreDraft}
+          onDiscard={discard}
+          description="Tenés cambios sin guardar de la última vez que editaste este libro."
+        />
+      )}
+
       {/* Book Info Card */}
       <Card className="mb-6">
-        <CardContent className="p-4">
+        <CardContent className="p-5">
           <div className="flex gap-4 items-start">
-            <div className="relative">
-              {displayCover ? (
-                <img
-                  src={displayCover}
-                  alt={book.title}
-                  className="w-16 h-24 object-cover rounded-md shadow-sm"
-                />
-              ) : (
-                <div className="w-16 h-24 bg-secondary rounded-md flex items-center justify-center">
-                  <BookOpen className="h-8 w-8 text-muted-foreground" />
-                </div>
-              )}
-
-              {/* Botón lápiz para editar URL de portada */}
-              <button
-                type="button"
-                onClick={() => setEditingCover((prev) => !prev)}
-                className="absolute -right-2 -bottom-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background shadow border border-border hover:bg-muted transition-colors"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            {displayCover ? (
+              <img
+                src={displayCover}
+                alt={book.title}
+                className="w-14 h-20 object-cover rounded-md shadow-sm shrink-0"
+              />
+            ) : (
+              <div className="w-14 h-20 bg-secondary rounded-md flex items-center justify-center shrink-0">
+                <BookOpen className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+              </div>
+            )}
 
             <div className="flex-1 min-w-0">
-              <h2 className="font-semibold text-lg line-clamp-2">{book.title}</h2>
+              <h2 className="font-semibold text-lg leading-snug">{book.title}</h2>
               <p className="text-sm text-muted-foreground">{book.author}</p>
 
-              {/* Campo URL de portada */}
-              {editingCover && (
-                <div className="mt-3 space-y-1">
-                  <Label htmlFor="coverUrl" className="text-xs text-muted-foreground">
-                    URL de la portada
-                  </Label>
-                  <Input
-                    id="coverUrl"
-                    type="url"
-                    placeholder="https://ejemplo.com/portada.jpg"
-                    value={coverUrl}
-                    onChange={(e) => setCoverUrl(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Si completás este campo se actualizará la imagen de portada del libro. Si lo
-                    dejás vacío, se eliminará.
-                  </p>
-                </div>
-              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3 h-11"
+                onClick={() => setEditingCover((prev) => !prev)}
+                aria-expanded={editingCover}
+              >
+                <ImagePlus className="h-4 w-4 mr-2" />
+                {displayCover ? 'Cambiar portada' : 'Agregar portada'}
+              </Button>
             </div>
           </div>
+
+          {editingCover && (
+            <div className="mt-4 space-y-1">
+              <Label htmlFor="coverUrl" className="text-xs text-muted-foreground">
+                URL de la portada
+              </Label>
+              <Input
+                id="coverUrl"
+                type="url"
+                placeholder="https://ejemplo.com/portada.jpg"
+                value={coverUrl}
+                onChange={(e) => setCoverUrl(e.target.value)}
+                className="h-11 text-base"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Si completás este campo se actualizará la imagen de portada del libro. Si lo
+                dejás vacío, se eliminará.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -271,7 +445,7 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
 
           <CardContent className="space-y-6">
             {/* Rating */}
-            <div className="space-y-2">
+            <div className="space-y-2" ref={ratingRef}>
               <Label>Calificación *</Label>
               <StarRating rating={rating} onRatingChange={setRating} size="lg" />
             </div>
@@ -279,33 +453,45 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
             {/* Dates */}
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Fecha de inicio</Label>
+                <Label htmlFor="edit_start_date">Fecha de inicio</Label>
                 <Input
+                  id="edit_start_date"
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
+                  className="h-11 text-base"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Fecha de fin</Label>
+                <Label htmlFor="edit_end_date">Fecha de fin</Label>
                 <Input
+                  id="edit_end_date"
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
+                  className="h-11 text-base"
                 />
               </div>
             </div>
 
             {/* Review Text */}
             <div className="space-y-2">
-              <Label>Tu reseña</Label>
+              <Label htmlFor="edit_review">Tu reseña</Label>
               <Textarea
-                className="min-h-[300px]"
+                id="edit_review"
+                className="min-h-[300px] text-base leading-relaxed resize-y"
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Tags */}
+        <Card>
+          <CardContent className="p-5">
+            <TagPicker value={tags} onChange={setTags} />
           </CardContent>
         </Card>
 
@@ -358,6 +544,8 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
                   type="button"
                   variant="ghost"
                   size="icon"
+                  className="h-11 w-11"
+                  aria-label={`Borrar la frase ${index + 1}`}
                   onClick={() => removeQuote(index)}
                 >
                   <X className="h-5 w-5" />
@@ -367,36 +555,14 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
           </CardContent>
         </Card>
 
-        {/* Buttons */}
-        <div className="flex gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 h-12"
-            onClick={() => router.push(`/book/${bookId}`)}
-            disabled={saving}
-          >
-            Cancelar
-          </Button>
-
-          <Button
-            type="submit"
-            className="flex-1 h-12"
-            disabled={saving || rating === 0}
-          >
-            {saving ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                Guardando...
-              </>
-            ) : (
-              <>
-                <Save className="h-5 w-5 mr-2" />
-                Guardar Cambios
-              </>
-            )}
-          </Button>
-        </div>
+        <FormSaveBar
+          saveLabel="Guardar Cambios"
+          missing={missing}
+          saving={saving}
+          onCancel={() => router.push(`/book/${bookId}`)}
+          draftSavedAt={savedAt}
+          error={submitError}
+        />
       </form>
     </div>
   )

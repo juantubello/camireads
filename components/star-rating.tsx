@@ -29,10 +29,15 @@ export function StarRating({
           key={star}
           type="button"
           disabled={readonly}
+          aria-label={
+            readonly ? undefined : `Calificar con ${star} ${star === 1 ? 'estrella' : 'estrellas'}`
+          }
+          aria-pressed={readonly ? undefined : star <= rating}
           onClick={() => !readonly && onRatingChange?.(star)}
           className={cn(
             'transition-colors',
-            !readonly && 'hover:scale-110 cursor-pointer',
+            // Editable: el target táctil llega a 44px sin agrandar la estrella.
+            !readonly && 'flex min-h-11 min-w-11 items-center justify-center hover:scale-110 cursor-pointer',
             readonly && 'cursor-default'
           )}
         >

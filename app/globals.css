@@ -123,4 +123,35 @@
   html, body {
     @apply h-full overflow-x-hidden;
   }
+
+  /* iOS: evita que Safari infle el texto al rotar a horizontal. */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* iOS: saca el flash gris azulado al tocar links/botones (ya damos
+     feedback propio con los estados hover/active de Tailwind). */
+  a, button, [role='button'] {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Anti-zoom de Safari iOS al enfocar un campo.
+   Safari hace zoom automático si el input mide menos de 16px. Los componentes
+   `Input`/`Textarea` ya usan `text-base` (16px) y bajan a `text-sm` recién en
+   `md:` — pero `md:` arranca en 768px, que es justo el ancho de un iPad en
+   vertical, así que ahí volverían a 14px y el zoom aparecería.
+   Esta regla va FUERA de `@layer` a propósito: el CSS sin capa le gana a las
+   utilidades de Tailwind, que si no pisarían el font-size. Solo aplica a
+   punteros gruesos (touch), así que en desktop no cambia nada, y en teléfonos
+   los campos ya eran de 16px => tampoco cambia nada.
+   -------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
