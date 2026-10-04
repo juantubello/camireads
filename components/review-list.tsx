@@ -9,6 +9,7 @@ import { Book, Review, PaginatedResponse } from '@/lib/types'
 import { Loader2 } from 'lucide-react'
 import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
+import { BookTitleSearch } from '@/components/book-title-search'
 import { TagChip } from '@/components/tag-chip'
 import type { BookTag } from '@/lib/tags'
 
@@ -133,34 +134,37 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
   }
 }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-  
-  if (books.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-        <div className="text-center max-w-sm">
-          <BookOpen className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2 text-balance">Aún no hay libros</h2>
-          <p className="text-muted-foreground text-balance">
-            Comienza tu viaje de lectura agregando tu primera reseña
-          </p>
-        </div>
-      </div>
-    )
-  }
-  
+  // El encabezado y el buscador se renderizan SIEMPRE, también mientras carga
+  // la primera página: antes el spinner reemplazaba toda la pantalla y al
+  // llegar los datos el título aparecía de golpe, empujando la lista.
   return (
     <div className="max-w-2xl md:max-w-5xl xl:max-w-6xl mx-auto px-4 md:px-6 py-6">
       <PageTitle subtitle="Tu viaje personal de lectura">
         CamiReads
       </PageTitle>
-      
+
+      {/* Buscador rápido por título. Va acá arriba, antes de la lista, y su
+          desplegable es `absolute`, así que no empuja las tarjetas. */}
+      <BookTitleSearch className="mb-4" />
+
+      {loading ? (
+        <div className="flex items-center justify-center min-h-[50dvh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : books.length === 0 ? (
+        <div className="flex flex-col items-center justify-center min-h-[50dvh] px-4">
+          <div className="text-center max-w-sm">
+            <BookOpen className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2 text-balance">
+              Aún no hay libros
+            </h2>
+            <p className="text-muted-foreground text-balance">
+              Comienza tu viaje de lectura agregando tu primera reseña
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
       {usingMockData && (
         <p className="text-xs text-amber-600 dark:text-amber-400 mb-4 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-md border border-amber-200 dark:border-amber-800">
           Modo de vista previa - Mostrando datos de ejemplo
@@ -269,6 +273,8 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
         <p className="text-center text-sm text-muted-foreground mt-6 mb-4">
           Has llegado al final de tus reseñas
         </p>
+      )}
+        </>
       )}
     </div>
   )

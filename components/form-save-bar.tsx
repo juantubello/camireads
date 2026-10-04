@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertCircle, Check, Loader2, Save } from 'lucide-react'
+import { AlertCircle, Check, Loader2, Save, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatDraftTime } from '@/lib/draft-storage'
@@ -31,6 +31,7 @@ export function FormSaveBar({
   onCancel,
   cancelLabel = 'Cancelar',
   draftSavedAt,
+  draftError,
   error,
 }: {
   saveLabel: string
@@ -39,6 +40,8 @@ export function FormSaveBar({
   onCancel: () => void
   cancelLabel?: string
   draftSavedAt?: string | null
+  /** El autosave no pudo escribir en el navegador. Se muestra SIEMPRE. */
+  draftError?: string | null
   error?: string | null
 }) {
   const incomplete = missing.length > 0
@@ -47,11 +50,11 @@ export function FormSaveBar({
     <div
       className={cn(
         'sticky bottom-0 z-30 -mx-5 mt-2 border-t border-border bg-background/95 px-5 py-3 backdrop-blur',
-        // `bottom-0` alcanza: el <main> de la página ya reserva abajo
-        // `5rem + env(safe-area-inset-bottom)` para la bottom nav del iPhone, y
-        // el rectángulo que limita a un sticky es la CAJA DE CONTENIDO del
-        // contenedor con scroll. O sea que la barra queda justo arriba de la
-        // nav y del home indicator, sin sumar el inset dos veces.
+        // `bottom-0` alcanza: las páginas de formulario le ponen al <main>
+        // con scroll un `mb` igual al alto de la bottom nav, así que el borde
+        // inferior del área con scroll ya es el techo de la nav. No usar `pb`
+        // para esto: Safari iOS no descuenta el padding del contenedor al
+        // ubicar un sticky y la barra queda tapada por la nav.
       )}
     >
       {error && (
@@ -61,6 +64,20 @@ export function FormSaveBar({
         >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
+        </p>
+      )}
+
+      {/* El fallo del autosave va aparte del error de guardado y NO lo tapa
+          "Para guardar falta…": mientras escribe, al formulario casi siempre le
+          falta algún campo obligatorio, así que condicionarlo a `!incomplete`
+          era esconder justo el aviso que importa. */}
+      {draftError && (
+        <p
+          role="alert"
+          className="mb-2 flex items-start gap-2 text-sm font-medium text-destructive"
+        >
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{draftError}</span>
         </p>
       )}
 
@@ -77,7 +94,9 @@ export function FormSaveBar({
         </p>
       )}
 
-      {!error && !incomplete && draftSavedAt && (
+      {/* Mismo motivo: el tilde del borrador se muestra aunque falten campos.
+          Lo que NO puede pasar es mostrarlo cuando el guardado falló. */}
+      {!draftError && draftSavedAt && (
         <p className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
           <Check className="h-3.5 w-3.5 shrink-0" />
           Borrador guardado {formatDraftTime(draftSavedAt)}

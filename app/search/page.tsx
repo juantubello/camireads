@@ -370,12 +370,21 @@ export default function SearchPage() {
   const effectiveMessage =
     !hasSearched && !hasActiveFilters
       ? {
+          // `idle`: todavía no buscó nada. Es un cartel de bienvenida, no un
+          // resultado — y con el panel de filtros abierto arranca en y≈753,
+          // o sea ya tapado por la tab bar: nadie lo lee, pero hacía scrollear
+          // la página ~300px "sin tener nada abajo". Ver dónde se esconde.
+          kind: 'idle' as const,
           icon: <Search className="h-12 w-12 text-muted-foreground mb-4" />,
           title: 'Usá los filtros para buscar en tus reseñas',
           subtitle: 'Podés combinar autor, libro, fecha, calificación y tags',
         }
       : results.length === 0
       ? {
+          // `empty`: buscó y no hubo nada. Este sí hay que mostrarlo siempre;
+          // en mobile el panel se cierra solo después de buscar, así que entra
+          // holgado en pantalla.
+          kind: 'empty' as const,
           icon: <Book className="h-12 w-12 text-muted-foreground mb-4" />,
           title: 'No se encontraron reseñas',
           subtitle: 'Probá ajustando los filtros de búsqueda',
@@ -383,7 +392,21 @@ export default function SearchPage() {
       : null
 
   return (
-    <div className="min-h-screen bg-background pb-[calc(6rem_+_env(safe-area-inset-bottom))] md:pb-10 md:pt-16">
+    // Esta página NO usa la estructura `h-dvh` + `<main>` con scroll propio del
+    // resto: acá scrollea el documento, porque la barra de filtros es
+    // `sticky top-0` y en desktop se corre a `md:top-16` para quedar debajo del
+    // header fijo. Ese offset solo cierra contra el scroll del documento; en un
+    // contenedor propio la barra se pegaría al borde del contenedor (que en
+    // desktop ya arranca debajo del header) y el `top-16` la mandaría 64px más
+    // abajo. Por eso se mantiene el `div` con `min-h-*` en vez de uniformarla.
+    //
+    // El `pb` que reservaba la nav salió de acá y bajó al bloque de resultados:
+    // con `box-sizing: border-box` el `min-height` fija el alto de la CAJA, pero
+    // el contenido interno (barra sticky + estado vacío) ya medía más que
+    // `100dvh - padding`, así que el padding terminaba sumándose por abajo y la
+    // página scrolleaba ~293px sin tener nada que mostrar. Con el padding
+    // adentro, una página vacía mide exactamente 100dvh y no scrollea.
+    <div className="min-h-dvh bg-background md:pt-16">
       {/* En desktop la barra de filtros se pega debajo del header fijo (64px).
           El `max-h` es la red de seguridad: con todos los filtros abiertos la
           barra mide ~757px y en un iPhone chico (o con el teclado abierto) el
@@ -737,7 +760,21 @@ export default function SearchPage() {
         </SheetContent>
       </Sheet>
 
-      <div className="px-5 py-6 md:max-w-5xl xl:max-w-6xl md:mx-auto md:px-6">
+      {/* El pb que reserva la tab bar vive acá, no en el contenedor de arriba:
+          así no se suma al `min-h-dvh` y la página vacía no scrollea. La cuenta
+          es la misma que en el resto: 64px de nav + 1px de borde + safe-area,
+          más ~31px de respiro. */}
+      <div
+        className={cn(
+          'px-5 pt-6 pb-[calc(6rem_+_env(safe-area-inset-bottom))] md:pb-10 md:max-w-5xl xl:max-w-6xl md:mx-auto md:px-6',
+          // En mobile, con el panel de filtros abierto (que mide ~729px de los
+          // 812 de la pantalla) este bloque arranca abajo de la tab bar: no se
+          // ve, pero suma ~300px de scroll vacío. Con el panel abierto no hace
+          // falta explicar nada, el formulario está a la vista. En desktop sí
+          // se muestra, porque ahí entra sin pelear con nada.
+          effectiveMessage?.kind === 'idle' && showFilters && 'max-md:hidden',
+        )}
+      >
         {effectiveMessage ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             {effectiveMessage.icon}

@@ -6,17 +6,24 @@ import { formatDraftTime } from '@/lib/draft-storage'
 
 /**
  * Cartel para recuperar un borrador. Nunca se restaura solo: la usuaria decide.
+ *
+ * Puede haber más de uno a la vez: si ella ignora el cartel y escribe algo
+ * nuevo, lo nuevo se guarda solo (sin pisar esto) y lo viejo sigue ofreciéndose
+ * acá. `replaceWarning` es lo que explica ese cruce cuando está pasando.
  */
 export function DraftBanner({
   savedAt,
   onRestore,
   onDiscard,
   description = 'Quedó un borrador sin guardar en este navegador.',
+  replaceWarning,
 }: {
   savedAt: string
   onRestore: () => void
   onDiscard: () => void
   description?: string
+  /** Qué pasa con lo que hay en pantalla si toca "Recuperar borrador". */
+  replaceWarning?: string | null
 }) {
   return (
     <div className="mb-6 rounded-xl border border-border bg-accent/50 p-4">
@@ -27,6 +34,10 @@ export function DraftBanner({
           <p className="mt-1 text-sm text-muted-foreground">
             Última vez que se guardó solo: {formatDraftTime(savedAt)}.
           </p>
+
+          {replaceWarning && (
+            <p className="mt-2 text-sm text-foreground/80">{replaceWarning}</p>
+          )}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" className="h-11 px-4" onClick={onRestore}>

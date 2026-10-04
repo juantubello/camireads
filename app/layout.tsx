@@ -3,6 +3,7 @@ import { Geist } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { AppNav } from '@/components/app-nav'
+import { NavigationTracker } from '@/components/navigation-tracker'
 
 const geist = Geist({ subsets: ["latin"] });
 
@@ -48,6 +49,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${geist.className} font-sans antialiased`}>
+        <NavigationTracker />
         {children}
         <AppNav />
         <Analytics />

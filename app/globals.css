@@ -120,8 +120,19 @@
   }
   
   /* Custom styles for mobile-first app experience */
+  /* `h-full` (height: 100%) le daba a <body> un alto FIJO de 100vh y, como
+     también tiene `overflow-x: hidden`, lo convertía en un contenedor de scroll
+     propio de exactamente 100vh. En Safari iOS 100vh es MÁS ALTO que el área
+     visible (incluye la barra del navegador), así que el final de ese scroll
+     caía debajo de la barra: el último elemento quedaba tapado aunque ya no se
+     pudiera scrollear más. Sin alto fijo, el documento crece con el contenido y
+     el scroll lo maneja el viewport, que iOS sí alinea con el área visible.
+     El color de fondo del <body> igual pinta todo el lienzo, así que no queda
+     ninguna franja blanca cuando la página es más corta que la pantalla.
+     Las páginas que necesitan ocupar la pantalla entera lo piden con `h-dvh` /
+     `min-h-dvh`, que es la unidad correcta en iOS. */
   html, body {
-    @apply h-full overflow-x-hidden;
+    @apply overflow-x-hidden;
   }
 
   /* iOS: evita que Safari infle el texto al rotar a horizontal. */
@@ -154,4 +165,29 @@
   textarea {
     font-size: 16px;
   }
+}
+
+/* --------------------------------------------------------------------------
+   Tokens de los gráficos del Perfil.
+   NO tocan la paleta: son colores DERIVADOS de ella (misma familia cálida,
+   hue 50-60) y viven en su propio scope `.camireads-viz`, así que ninguna
+   pantalla existente los ve.
+
+   Validados con el validador de la skill `dataviz` contra la superficie real
+   de las tarjetas (`--card`): claro #b0652a sobre #fefbf8 y oscuro #c9793e
+   sobre #231813 pasan las 5 comprobaciones (banda de luminosidad, piso de
+   croma, separación CVD, piso de visión normal y contraste >= 3:1).
+
+   Es UNA sola serie en todos los gráficos a propósito: con una sola no hay
+   pares adyacentes que confundir bajo daltonismo, y la comparación entre
+   años va como número con delta, no como segunda serie de color.
+   -------------------------------------------------------------------------- */
+.camireads-viz {
+  --viz-series: #b0652a;
+  /* Línea de base / grilla: un paso del color del borde, recesiva. */
+  --viz-grid: var(--border);
+}
+
+.dark .camireads-viz {
+  --viz-series: #c9793e;
 }

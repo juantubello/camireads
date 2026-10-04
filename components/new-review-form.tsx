@@ -17,6 +17,7 @@ import { API_BASE_URL, getApiHeaders, readApiError } from '@/lib/api-config'
 import { PageTitle } from '@/components/page-title'
 import { mergeQuotes, parseKindleNotebookHtml } from '@/lib/quote-import'
 import { saveBookTags, type TagSelection } from '@/lib/tags'
+import { goBackOr, replaceTo } from '@/lib/navigation'
 import { useFormDraft } from '@/hooks/use-form-draft'
 import { newReviewDraftKey } from '@/lib/draft-storage'
 
@@ -86,17 +87,17 @@ export function NewReviewForm() {
     JSON.stringify(draftData) !==
     JSON.stringify({ formData: EMPTY_FORM, quotes: [], tags: [] })
 
-  const { pendingDraft, savedAt, restore, discard, clear } =
+  const { pendingDrafts, savedAt, saveError, hasLiveWork, restore, discard, clear } =
     useFormDraft<NewReviewDraft>({
       storageKey: newReviewDraftKey(),
       data: draftData,
       dirty,
     })
 
-  function handleRestoreDraft() {
-    const restored = restore()
+  function handleRestoreDraft(id: string) {
+    const restored = restore(id)
     if (!restored) return
-    setFormData({ ...EMPTY_FORM, ...restored.formData })
+    setFormData({ ...EMPTY_FORM, ...(restored.formData ?? {}) })
     setQuotes(restored.quotes ?? [])
     setTags(restored.tags ?? [])
   }
@@ -227,7 +228,9 @@ export function NewReviewForm() {
       }
 
       clear()
-      router.push(`/book/${bookId}`)
+      // `replace` y no `push`: si no, "atrás" vuelve al formulario vacío (ya
+      // guardado) y desde ahí se podría crear el mismo libro de nuevo.
+      replaceTo(router, `/book/${bookId}`)
     } catch (error) {
       console.error('Error creating review:', error)
       setSubmitError(
@@ -262,19 +265,31 @@ export function NewReviewForm() {
   const displayCover = formData.urlCover || null
 
   return (
-    <div className="max-w-2xl mx-auto px-5 py-6">
+    <div className="max-w-2xl mx-auto px-5 pt-6">
       <PageTitle subtitle="Agrega un libro a tu colección" className="mb-6">
         Nueva Reseña
       </PageTitle>
 
-      {pendingDraft && (
+      {/* Puede haber más de uno: ignorar el cartel y escribir otra reseña ya no
+          pisa nada, así que lo viejo y lo nuevo conviven hasta que ella decida. */}
+      {pendingDrafts.map((draft) => (
         <DraftBanner
-          savedAt={pendingDraft.savedAt}
-          onRestore={handleRestoreDraft}
-          onDiscard={discard}
-          description="Tenés una reseña sin terminar de la última vez."
+          key={draft.savedAt}
+          savedAt={draft.savedAt}
+          onRestore={() => handleRestoreDraft(draft.id)}
+          onDiscard={() => discard(draft.id)}
+          description={
+            pendingDrafts.length > 1
+              ? 'Uno de los borradores sin terminar que quedaron en este navegador.'
+              : 'Tenés una reseña sin terminar de la última vez.'
+          }
+          replaceWarning={
+            hasLiveWork
+              ? 'Lo que estás escribiendo ahora se guarda solo, aparte de esto. Si recuperás este borrador, lo de la pantalla no se pierde: te lo vuelvo a ofrecer acá como otro borrador.'
+              : null
+          }
         />
-      )}
+      ))}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Card de info del libro */}
@@ -530,8 +545,9 @@ export function NewReviewForm() {
           saveLabel="Guardar Reseña"
           missing={missing}
           saving={loading}
-          onCancel={() => router.push('/')}
+          onCancel={() => goBackOr(router, '/')}
           draftSavedAt={savedAt}
+          draftError={saveError}
           error={submitError}
         />
       </form>

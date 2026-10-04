@@ -6,9 +6,20 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StarRating } from '@/components/star-rating'
 import { TagChip } from '@/components/tag-chip'
+import { TagPicker } from '@/components/tag-picker'
 import { Book, Review } from '@/lib/types'
-import type { BookTag } from '@/lib/tags'
-import { ArrowLeft, Edit, Trash2, Loader2, Copy, Check, AlertCircle } from 'lucide-react'
+import { saveBookTags, toSelection, type BookTag, type TagSelection } from '@/lib/tags'
+import { goBackOr, replaceTo } from '@/lib/navigation'
+import {
+  ArrowLeft,
+  Edit,
+  Trash2,
+  Loader2,
+  Copy,
+  Check,
+  AlertCircle,
+  Plus,
+} from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -141,6 +152,13 @@ export function BookDetail({ bookId }: { bookId: string }) {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [copiedForAi, setCopiedForAi] = useState(false)
 
+  // Etiquetar sin salir del detalle: 1738 de 1944 libros no tienen ningún tag,
+  // y hasta ahora había que entrar a editar la reseña entera para agregar uno.
+  const [editingTags, setEditingTags] = useState(false)
+  const [tagSelection, setTagSelection] = useState<TagSelection[]>([])
+  const [savingTags, setSavingTags] = useState(false)
+  const [tagsError, setTagsError] = useState<string | null>(null)
+
   useEffect(() => {
     fetchBook()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -189,7 +207,9 @@ export function BookDetail({ bookId }: { bookId: string }) {
         return
       }
 
-      router.push('/')
+      // `replace` y no `push`: el libro ya no existe, volver a su ficha con el
+      // botón "atrás" solo daría un 404.
+      replaceTo(router, '/')
     } catch (error) {
       console.error('[BookDetail] Error deleting review:', error)
       setDeleteError(
@@ -222,6 +242,32 @@ export function BookDetail({ bookId }: { bookId: string }) {
     }
   }
 
+  function openTagEditor() {
+    setTagSelection((book?.tags ?? []).map(toSelection))
+    setTagsError(null)
+    setEditingTags(true)
+  }
+
+  async function handleSaveTags() {
+    if (savingTags) return
+
+    setSavingTags(true)
+    setTagsError(null)
+
+    try {
+      const saved = await saveBookTags(bookId, tagSelection)
+      setBook((prev) => (prev ? { ...prev, tags: saved } : prev))
+      setEditingTags(false)
+    } catch (error) {
+      console.error('[BookDetail] Error saving tags:', error)
+      setTagsError(
+        error instanceof Error ? error.message : 'No pude guardar los tags.',
+      )
+    } finally {
+      setSavingTags(false)
+    }
+  }
+
   const isReviewLong = (html: string) => {
     const text = stripHtml(html)
     return text.length > 300 || text.split('\n').length > 5
@@ -229,7 +275,7 @@ export function BookDetail({ bookId }: { bookId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex items-center justify-center min-h-[60dvh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
@@ -240,7 +286,7 @@ export function BookDetail({ bookId }: { bookId: string }) {
       <div className="mx-auto max-w-2xl px-4 py-10 text-center">
         <p className="font-medium text-foreground">Libro no encontrado</p>
         {loadError && <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>}
-        <Button className="mt-6 h-11" onClick={() => router.push('/')}>
+        <Button className="mt-6 h-11" onClick={() => replaceTo(router, '/')}>
           Volver a mis reseñas
         </Button>
       </div>
@@ -262,7 +308,9 @@ export function BookDetail({ bookId }: { bookId: string }) {
       <header className="mb-6 flex items-center gap-3">
         <button
           type="button"
-          onClick={() => router.back()}
+          // Vuelve si hay historial propio; si se entró directo por URL cae en
+          // la lista en vez de sacarnos de la app.
+          onClick={() => goBackOr(router, '/')}
           aria-label="Volver"
           className="text-muted-foreground hover:text-foreground"
         >
@@ -309,16 +357,84 @@ export function BookDetail({ bookId }: { bookId: string }) {
               </div>
             </div>
 
-            {/* Tags del libro */}
-            {tags.length > 0 && (
-              <ul className="flex flex-wrap gap-2" aria-label="Tags del libro">
-                {tags.map((tag) => (
-                  <li key={tag.id}>
-                    <TagChip tag={tag} />
+            {/* Tags del libro, en la cabecera: son parte de la identidad del
+                libro, no de la reseña. Y se editan acá mismo — sin el "+"
+                visible, en el 89% de los libros (los que no tienen ninguno) la
+                función directamente no existía. */}
+            <div className="space-y-3">
+              {!editingTags ? (
+                <ul
+                  className="flex flex-wrap items-center gap-2"
+                  aria-label="Tags del libro"
+                >
+                  {tags.map((tag) => (
+                    <li key={tag.id}>
+                      <TagChip tag={tag} />
+                    </li>
+                  ))}
+                  <li>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 px-3 text-primary"
+                      onClick={openTagEditor}
+                    >
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      {tags.length > 0 ? 'Editar tags' : 'Agregar tag'}
+                    </Button>
                   </li>
-                ))}
-              </ul>
-            )}
+                </ul>
+              ) : (
+                <div className="rounded-xl border border-border bg-background/60 p-4">
+                  <TagPicker
+                    value={tagSelection}
+                    onChange={setTagSelection}
+                    description="Agrupá el libro sin salir de esta pantalla. Si el tag ya existe, elegilo de la lista para reusarlo."
+                    disabled={savingTags}
+                  />
+
+                  <div className="mt-4 flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 flex-none px-4"
+                      onClick={() => {
+                        setEditingTags(false)
+                        setTagsError(null)
+                      }}
+                      disabled={savingTags}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-11 flex-1"
+                      onClick={() => void handleSaveTags()}
+                      disabled={savingTags}
+                    >
+                      {savingTags ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Guardando…
+                        </>
+                      ) : (
+                        'Guardar tags'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {tagsError && (
+                <p
+                  role="alert"
+                  className="flex items-start gap-2 text-sm font-medium text-destructive"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{tagsError}</span>
+                </p>
+              )}
+            </div>
 
             {/* Fechas, compactas y en una sola línea */}
             {(startDate || endDate) && (
