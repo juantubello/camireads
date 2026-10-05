@@ -103,6 +103,18 @@ function parseTagIdsFromUrl(search: string): number[] {
   return Array.from(new Set(ids))
 }
 
+/**
+ * `?rating=0` a `?rating=5`. El 0 es "sin calificar" (lo que trajo la
+ * importación de Goodreads sin estrellas): desde el Perfil se llega acá con
+ * `?rating=0` para encontrarlos y puntuarlos.
+ */
+function parseRatingFromUrl(search: string): number | null {
+  const raw = new URLSearchParams(search).get('rating')
+  if (raw === null) return null
+  const value = Number.parseInt(raw, 10)
+  return Number.isInteger(value) && value >= 0 && value <= 5 ? value : null
+}
+
 function sanitizeTagIds(value: unknown): number[] {
   if (!Array.isArray(value)) return []
   return Array.from(
@@ -161,7 +173,9 @@ export default function SearchPage() {
     const labels: string[] = []
     if (bookNameFilter.trim()) labels.push(`Libro: ${bookNameFilter.trim()}`)
     if (authorFilter.trim()) labels.push(`Autor: ${authorFilter.trim()}`)
-    if (ratingFilter !== null) labels.push(`${ratingFilter}★`)
+    if (ratingFilter !== null) {
+      labels.push(ratingFilter === 0 ? 'Sin calificar' : `${ratingFilter}★`)
+    }
     if (startDate) labels.push(`Desde ${startDate}`)
     if (endDate) labels.push(`Hasta ${endDate}`)
     if (selectedTagIds.length > 0) {
@@ -211,15 +225,18 @@ export default function SearchPage() {
   }, [])
 
   // 🧠 Al montar, leo filtros guardados (NO resultados).
-  // Si la URL trae ?tagIds=... (se llegó tocando un tag) manda la URL.
+  // Si la URL trae ?tagIds=... o ?rating=... (se llegó tocando un tag o desde
+  // el Perfil) manda la URL.
   useEffect(() => {
     if (typeof window === 'undefined') return
 
     const urlTagIds = parseTagIdsFromUrl(window.location.search)
-    if (urlTagIds.length > 0) {
+    const urlRating = parseRatingFromUrl(window.location.search)
+    if (urlTagIds.length > 0 || urlRating !== null) {
       const urlMode = new URLSearchParams(window.location.search).get('tagMode')
       setSelectedTagIds(urlTagIds)
       setTagMode(urlMode === 'all' ? 'all' : 'any')
+      setRatingFilter(urlRating)
       setShouldAutoSearch(true)
       setShowFilters(true)
       return
@@ -354,7 +371,8 @@ export default function SearchPage() {
 
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(STORAGE_KEY)
-      // Si se llegó por ?tagIds=..., saco el query para que recargar no lo reviva.
+      // Si se llegó por ?tagIds=... o ?rating=..., saco el query para que
+      // recargar no lo reviva.
       if (window.location.search) {
         window.history.replaceState({}, '', window.location.pathname)
       }
@@ -554,6 +572,17 @@ export default function SearchPage() {
                       {rating}★
                     </Button>
                   ))}
+                  {/* 0 = sin estrellas todavía (casi todos vienen de la
+                      importación de Goodreads). El backend ya filtra
+                      `rating=0`; faltaba poder pedirlo desde acá. */}
+                  <Button
+                    variant={ratingFilter === 0 ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setRatingFilter(0)}
+                    className="flex-1 min-w-[110px]"
+                  >
+                    Sin calificar
+                  </Button>
                 </div>
               </div>
 

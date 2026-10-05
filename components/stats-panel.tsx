@@ -375,13 +375,18 @@ function RatingsCard({ stats }: { stats: Stats }) {
       footnote={
         unrated ? (
           <>
-            <strong className="font-semibold text-foreground">
+            {/* Link al buscador ya filtrado: si no, el número no se puede
+                accionar (pedido de Camila: "¿cómo los encuentro?"). */}
+            <Link
+              href="/search?rating=0"
+              className="font-semibold text-foreground underline underline-offset-2 rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {formatNumber(unrated)} {unrated === 1 ? 'libro está' : 'libros están'} sin
               calificar
-            </strong>
+            </Link>
             . No entran en el gráfico ni en el promedio: un 0 acá significa
             &quot;todavía no le puse estrellas&quot;, no &quot;me pareció
-            malísimo&quot;.
+            malísimo&quot;. Tocá el número para verlos.
           </>
         ) : undefined
       }
