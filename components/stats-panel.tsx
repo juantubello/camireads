@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Info, Loader2, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BarRowChart, ChartCard, ColumnChart } from '@/components/stats-charts'
+import { formatRatingAverage } from '@/lib/rating'
 import {
   MONTH_FULL,
   fetchStats,
@@ -345,14 +346,20 @@ function YearToDateCard({ ytd }: { ytd: NonNullable<Stats['yearToDate']> }) {
   )
 }
 
+function ratingBucketLabel(rating: number): string {
+  if (rating >= 5) return '5 estrellas'
+  if (rating <= 1) return 'menos de 2 estrellas'
+  return `${rating}.00 a ${rating}.75 estrellas`
+}
+
 function RatingsCard({ stats }: { stats: Stats }) {
   const { distribution, average, rated, unrated } = stats.ratings
 
   const points = distribution.map((r) => ({
     label: String(r.rating),
-    fullLabel: `${formatNumber(r.count)} libros con ${r.rating} ${
-      r.rating === 1 ? 'estrella' : 'estrellas'
-    }`,
+    // Con cuartos (Fase 9) cada barra es un rango, como el filtro de Buscar:
+    // "3★" = de 3.00 a 3.75; "1★" = todo lo que está por debajo de 2.
+    fullLabel: `${formatNumber(r.count)} libros con ${ratingBucketLabel(r.rating)}`,
     value: r.count,
   }))
 
@@ -364,7 +371,7 @@ function RatingsCard({ stats }: { stats: Stats }) {
       title="Cómo puntuás"
       description={
         average !== null && rated !== null
-          ? `Promedio ${average.toFixed(1).replace('.', ',')} ★ sobre ${formatNumber(
+          ? `Promedio ${formatRatingAverage(average)} ★ sobre ${formatNumber(
               rated,
             )} libros calificados`
           : undefined

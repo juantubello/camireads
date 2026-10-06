@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { StarRating } from '@/components/star-rating'
+import { formatRating, isRated, parseRating } from '@/lib/rating'
 import { TagPicker } from '@/components/tag-picker'
 import { FormSaveBar } from '@/components/form-save-bar'
 import { DraftBanner } from '@/components/draft-banner'
@@ -154,7 +155,8 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
         ? data.quotes.map((q) => q.quoteText)
         : []
 
-    setRating(data.rating)
+    // `parseRating`: el backend puede mandar 4, 4.00 o 3.75; acá queda en cuartos.
+    setRating(parseRating(data.rating))
     setReviewText(data.reviewText ?? '')
     setBook(data.book)
     setTitle(data.book.title)
@@ -169,7 +171,7 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
       JSON.stringify({
         title: data.book.title,
         author: data.book.author,
-        rating: data.rating,
+        rating: parseRating(data.rating),
         reviewText: data.reviewText ?? '',
         startDate: data.book.startReadDate?.slice(0, 10) || '',
         endDate: data.book.endReadDate?.slice(0, 10) || '',
@@ -213,7 +215,7 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
     // title/author: en ese caso se quedan los del libro.
     setTitle(restored.title ?? book?.title ?? '')
     setAuthor(restored.author ?? book?.author ?? '')
-    setRating(restored.rating ?? 0)
+    setRating(parseRating(restored.rating))
     setReviewText(restored.reviewText ?? '')
     setStartDate(restored.startDate ?? '')
     setEndDate(restored.endDate ?? '')
@@ -608,8 +610,20 @@ export function EditReviewForm({ bookId }: { bookId: string }) {
           <CardContent className="space-y-6">
             {/* Rating */}
             <div className="space-y-2" ref={ratingRef}>
-              <Label>Calificación *</Label>
-              <StarRating rating={rating} onRatingChange={setRating} size="lg" />
+              <Label id="edit-review-rating-label">Calificación *</Label>
+              {/* Cuartos de estrella: tocar o deslizar. El número al lado es
+                  el mismo formato que la hoja de la ficha ("3.75"). */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <StarRating
+                  rating={rating}
+                  onRatingChange={setRating}
+                  size="lg"
+                  aria-labelledby="edit-review-rating-label"
+                />
+                <span className="text-base font-semibold tabular-nums text-muted-foreground">
+                  {isRated(rating) ? formatRating(rating) : 'Sin calificar'}
+                </span>
+              </div>
             </div>
 
             {/* Dates */}

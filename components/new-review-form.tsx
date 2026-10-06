@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { StarRating } from '@/components/star-rating'
+import { formatRating, isRated } from '@/lib/rating'
 import { BookAutocomplete } from '@/components/book-autocomplete'
 import { TagPicker } from '@/components/tag-picker'
 import { FormSaveBar } from '@/components/form-save-bar'
@@ -420,14 +421,22 @@ export function NewReviewForm() {
 
             {/* Rating */}
             <div className="space-y-2 w-full max-w-full" ref={ratingRef}>
-              <Label>Calificación *</Label>
-              <StarRating
-                rating={formData.rating}
-                onRatingChange={(rating) =>
-                  setFormData((prev) => ({ ...prev, rating }))
-                }
-                size="lg"
-              />
+              <Label id="new-review-rating-label">Calificación *</Label>
+              {/* Cuartos de estrella: tocar o deslizar. El número al lado es
+                  el mismo formato que la hoja de la ficha ("3.75"). */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <StarRating
+                  rating={formData.rating}
+                  onRatingChange={(rating) =>
+                    setFormData((prev) => ({ ...prev, rating }))
+                  }
+                  size="lg"
+                  aria-labelledby="new-review-rating-label"
+                />
+                <span className="text-base font-semibold tabular-nums text-muted-foreground">
+                  {isRated(formData.rating) ? formatRating(formData.rating) : 'Sin calificar'}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>

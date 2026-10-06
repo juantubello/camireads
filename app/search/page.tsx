@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/sheet'
 import { Label } from '@/components/ui/label'
 import { StarRating } from '@/components/star-rating'
+import { parseRating } from '@/lib/rating'
 import { PageTitle } from '@/components/page-title'
 import { TagChip } from '@/components/tag-chip'
 import { cn } from '@/lib/utils'
@@ -855,7 +856,7 @@ export default function SearchPage() {
                       <p className="text-sm text-muted-foreground mb-2">
                         {book.author}
                       </p>
-                      <StarRating rating={review.rating} size="sm" readonly />
+                      <StarRating rating={parseRating(review.rating)} size="sm" readonly showValue />
                       {shortReview && (
                         <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
                           {shortReview}

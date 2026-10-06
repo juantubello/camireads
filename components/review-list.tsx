@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StarRating } from '@/components/star-rating'
+import { parseRating } from '@/lib/rating'
 import { Book, Review, PaginatedResponse } from '@/lib/types'
 import { Loader2 } from 'lucide-react'
 import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
@@ -127,7 +128,7 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
     review: {
       id: review.id,
       book_id: book.id,
-      rating: review.rating,
+      rating: parseRating(review.rating),
       review_text: review.reviewText,
       created_at: review.createdAt,
     },
@@ -201,7 +202,7 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
                     
                     {book.review && (
                       <>
-                        <StarRating rating={book.review.rating} size="sm" readonly />
+                        <StarRating rating={book.review.rating} size="sm" readonly showValue />
                         
                         {book.review.review_text && (
                           <p className="text-xs text-muted-foreground line-clamp-1 leading-snug mt-0.5">

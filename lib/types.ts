@@ -13,6 +13,7 @@ export interface Book {
 export interface Review {
   id: number
   book_id: number
+  /** 0 = sin calificar; si no, 0.25..5 en cuartos (Fase 9). */
   rating: number
   review_text?: string
   quotes?: string[]

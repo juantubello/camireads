@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StarRating } from '@/components/star-rating'
+import { RatingSheet } from '@/components/rating-sheet'
 import { TagChip } from '@/components/tag-chip'
 import { TagPicker } from '@/components/tag-picker'
 import { Book, Review } from '@/lib/types'
@@ -34,6 +35,7 @@ import {
 import { API_BASE_URL, getApiHeaders, readApiError } from '@/lib/api-config'
 import { buildReviewTextForAi } from '@/lib/review-export'
 import { cn } from '@/lib/utils'
+import { formatRating, isRated, parseRating, ratingLabel } from '@/lib/rating'
 
 interface BookWithReview extends Book {
   review?: Review
@@ -83,7 +85,7 @@ function mapApiReviewToBookWithReview(api: ReviewFromApi): BookWithReview {
     review: {
       id: api.id,
       book_id: book.id,
-      rating: api.rating,
+      rating: parseRating(api.rating),
       review_text: api.reviewText,
       created_at: api.createdAt,
       quotes: api.quotes?.map((q) => q.quoteText) ?? [],
@@ -158,6 +160,12 @@ export function BookDetail({ bookId }: { bookId: string }) {
   const [tagSelection, setTagSelection] = useState<TagSelection[]>([])
   const [savingTags, setSavingTags] = useState(false)
   const [tagsError, setTagsError] = useState<string | null>(null)
+
+  // Calificar sin salir de la ficha (Fase 9): hay ~700 libros "sin calificar"
+  // y entrar a Editar la reseña entera para cada uno era un castigo.
+  const [ratingSheetOpen, setRatingSheetOpen] = useState(false)
+  const [savingRating, setSavingRating] = useState(false)
+  const [ratingError, setRatingError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchBook()
@@ -268,6 +276,52 @@ export function BookDetail({ bookId }: { bookId: string }) {
     }
   }
 
+  async function handleConfirmRating(next: number) {
+    setRatingSheetOpen(false)
+
+    const previous = book?.review?.rating ?? 0
+    if (!book?.review || next === previous) return
+
+    // Optimista: la ficha muestra el valor nuevo enseguida y, si el backend
+    // dice que no, vuelve al anterior y explica por qué.
+    const setRating = (rating: number) =>
+      setBook((prev) =>
+        prev?.review ? { ...prev, review: { ...prev.review, rating } } : prev,
+      )
+
+    setRating(next)
+    setSavingRating(true)
+    setRatingError(null)
+
+    try {
+      const baseUrl = await API_BASE_URL
+      // Solo `rating`: en este PUT lo que no viene (o viene null) no se toca,
+      // así que la reseña, las frases y las fechas quedan como estaban.
+      const response = await fetch(`${baseUrl}/reviews/book/${bookId}`, {
+        method: 'PUT',
+        headers: getApiHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ rating: next }),
+      })
+
+      if (!response.ok) {
+        setRating(previous)
+        setRatingError(
+          await readApiError(response, 'No pude guardar la calificación.'),
+        )
+      }
+    } catch (error) {
+      console.error('[BookDetail] Error saving rating:', error)
+      setRating(previous)
+      setRatingError(
+        error instanceof Error
+          ? error.message
+          : 'No pude conectarme al backend para guardar la calificación.',
+      )
+    } finally {
+      setSavingRating(false)
+    }
+  }
+
   const isReviewLong = (html: string) => {
     const text = stripHtml(html)
     return text.length > 300 || text.split('\n').length > 5
@@ -350,8 +404,50 @@ export function BookDetail({ bookId }: { bookId: string }) {
                 <p className="mt-2 text-base text-muted-foreground">{book.author}</p>
 
                 {book.review && (
-                  <div className="mt-3">
-                    <StarRating rating={book.review.rating} size="md" readonly />
+                  <div className="mt-2">
+                    {/* Toda la fila (estrellas + número) es el botón que abre
+                        la hoja: es el target más obvio y llega a 44px de alto. */}
+                    <button
+                      type="button"
+                      onClick={() => setRatingSheetOpen(true)}
+                      disabled={savingRating}
+                      aria-label={`${ratingLabel(book.review.rating)}. ${
+                        isRated(book.review.rating) ? 'Cambiar' : 'Calificar'
+                      }`}
+                      className="-ml-1 inline-flex min-h-11 items-center gap-2 rounded-lg px-1 text-left transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70"
+                    >
+                      <StarRating rating={book.review.rating} size="md" readonly />
+                      {isRated(book.review.rating) ? (
+                        <span className="text-base font-semibold tabular-nums text-foreground">
+                          {formatRating(book.review.rating)}
+                        </span>
+                      ) : (
+                        <span className="text-sm font-semibold text-primary">
+                          Calificar
+                        </span>
+                      )}
+                      {savingRating && (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
+                    </button>
+
+                    {ratingError && (
+                      <p
+                        role="alert"
+                        className="mt-1 flex items-start gap-2 text-sm font-medium text-destructive"
+                      >
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{ratingError}</span>
+                      </p>
+                    )}
+
+                    <RatingSheet
+                      open={ratingSheetOpen}
+                      onOpenChange={setRatingSheetOpen}
+                      value={book.review.rating}
+                      onConfirm={(value) => void handleConfirmRating(value)}
+                      description={mainTitle}
+                    />
                   </div>
                 )}
               </div>

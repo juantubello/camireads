@@ -1,3 +1,5 @@
+import { formatRating, isRated } from '@/lib/rating'
+
 type ReviewForAiInput = {
   title: string
   author: string
@@ -27,8 +29,9 @@ export function buildReviewTextForAi({
     `Autor: ${author}`,
   ]
 
-  if (typeof rating === 'number' && rating > 0) {
-    sections.push(`Calificacion: ${rating}/5`)
+  if (isRated(rating)) {
+    // Mismo formato que en la app: "3.75/5", "4.00/5".
+    sections.push(`Calificacion: ${formatRating(rating)}/5`)
   }
 
   const cleanReview = stripReviewHtml(reviewText ?? '')
