@@ -1,20 +1,34 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ProfileHeader } from '@/components/profile-header'
+import { SagaList } from '@/components/saga-list'
 import { StatsPanel } from '@/components/stats-panel'
 import { TagManager } from '@/components/tag-manager'
 import { cn } from '@/lib/utils'
 
-type TabId = 'numeros' | 'tags'
+type TabId = 'numeros' | 'sagas' | 'tags'
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'numeros', label: 'Mis números' },
+  { id: 'sagas', label: 'Mis sagas' },
   { id: 'tags', label: 'Mis tags' },
 ]
 
 /**
- * Pantalla de Perfil: foto arriba, y abajo dos solapas.
+ * Solapa elegida, recordada en `sessionStorage`. Sin esto, entrar a una saga y
+ * volver devolvía a "Mis números" (la pantalla se monta de nuevo) y había que
+ * tocar "Mis sagas" otra vez cada vez. Es una comodidad por pestaña: si falla
+ * (modo privado, storage bloqueado), simplemente arranca en la primera.
+ */
+const TAB_STORAGE_KEY = 'camireads:profile-tab'
+
+function isTabId(value: unknown): value is TabId {
+  return TABS.some((t) => t.id === value)
+}
+
+/**
+ * Pantalla de Perfil: foto arriba, y abajo tres solapas (números, sagas, tags).
  *
  * ¿Por qué solapas y no un scroll largo? Apiladas, las métricas (la cifra
  * grande, 4 tarjetas, 2 destacados, 3 gráficos) más el ABM de tags dan más de
@@ -24,8 +38,28 @@ const TABS: Array<{ id: TabId; label: string }> = [
  * lista de tags se refresca sola al volver.
  */
 export function ProfileScreen() {
-  const [tab, setTab] = useState<TabId>('numeros')
+  const [tab, setTabState] = useState<TabId>('numeros')
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+
+  // Se lee después de montar (no en el estado inicial) para que el HTML del
+  // server y el primer render del cliente coincidan.
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(TAB_STORAGE_KEY)
+      if (isTabId(saved)) setTabState(saved)
+    } catch {
+      // sin storage: arranca en la primera solapa
+    }
+  }, [])
+
+  function setTab(id: TabId) {
+    setTabState(id)
+    try {
+      window.sessionStorage.setItem(TAB_STORAGE_KEY, id)
+    } catch {
+      // idem
+    }
+  }
 
   function onKeyDown(event: React.KeyboardEvent) {
     const index = TABS.findIndex((t) => t.id === tab)
@@ -50,7 +84,7 @@ export function ProfileScreen() {
         role="tablist"
         aria-label="Secciones del perfil"
         onKeyDown={onKeyDown}
-        className="mt-6 grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted/50 p-1"
+        className="mt-6 grid grid-cols-3 gap-1 rounded-xl border border-border bg-muted/50 p-1"
       >
         {TABS.map((item) => {
           const active = tab === item.id
@@ -68,7 +102,7 @@ export function ProfileScreen() {
               tabIndex={active ? 0 : -1}
               onClick={() => setTab(item.id)}
               className={cn(
-                'min-h-11 rounded-lg px-3 text-sm font-medium transition-colors',
+                'min-h-11 rounded-lg px-2 text-sm font-medium transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 active
                   ? 'bg-card text-foreground shadow-sm'
@@ -88,7 +122,7 @@ export function ProfileScreen() {
         tabIndex={0}
         className="mt-4 focus-visible:outline-none"
       >
-        {tab === 'numeros' ? <StatsPanel /> : <TagManager />}
+        {tab === 'numeros' ? <StatsPanel /> : tab === 'sagas' ? <SagaList /> : <TagManager />}
       </div>
     </div>
   )

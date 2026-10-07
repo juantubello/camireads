@@ -36,8 +36,19 @@ const NAV_ITEMS = [
   { label: 'Mis Reseñas', short: 'Reseñas', href: '/', icon: BookOpen },
   { label: 'Nueva Reseña', short: 'Nueva', href: '/new', icon: PlusCircle },
   { label: 'Buscar', short: 'Buscar', href: '/search', icon: Search },
-  { label: 'Perfil', short: 'Perfil', href: '/profile', icon: User },
+  { label: 'Perfil', short: 'Perfil', href: '/profile', icon: User, also: ['/sagas/'] },
 ] as const
+
+/**
+ * ¿Este ítem es el de la pantalla actual? Además de la ruta exacta, un ítem
+ * puede "adoptar" pantallas hijas que no tienen tab propia: una saga
+ * (`/sagas/12`) se abre desde el Perfil, así que en la barra queda marcado
+ * Perfil y no ninguno (sin ítem activo la usuaria pierde la referencia).
+ */
+function isActive(item: (typeof NAV_ITEMS)[number], pathname: string): boolean {
+  if (pathname === item.href) return true
+  return 'also' in item && item.also.some((prefix) => pathname.startsWith(prefix))
+}
 
 /**
  * Navegación principal de la app.
@@ -53,7 +64,7 @@ export function AppNav() {
   const pathname = usePathname()
   const items = NAV_ITEMS.map((item) => ({
     ...item,
-    active: pathname === item.href,
+    active: isActive(item, pathname),
   }))
 
   return (

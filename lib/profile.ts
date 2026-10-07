@@ -13,6 +13,12 @@
 // seguridad, no el mecanismo.
 
 import { API_BASE_URL, getApiHeaders, readApiError } from '@/lib/api-config'
+import {
+  dataUrlBytes,
+  formatBytes,
+  resizeImageFile,
+  type ResizeResult,
+} from '@/lib/image-resize'
 
 export interface Profile {
   displayName: string | null
@@ -30,140 +36,22 @@ const PHOTO_QUALITY = 0.82
 /** Tope duro del lado del cliente: si ni a 400px baja de acá, algo anda mal. */
 export const MAX_DATA_URL_BYTES = 400 * 1024
 
-export interface ResizeResult {
-  dataUrl: string
-  /** Bytes del archivo original que eligió la usuaria. */
-  originalBytes: number
-  /** Bytes del data URL que se va a mandar (lo que realmente pesa en la base). */
-  resizedBytes: number
-  /** 'image/webp' o 'image/jpeg' según lo que soporte el navegador. */
-  mimeType: string
-  originalWidth: number
-  originalHeight: number
-}
-
-/**
- * ¿Este navegador sabe exportar WebP desde un canvas?
- * Safari sabe desde la 14, pero no damos por hecho nada: si `toDataURL` ignora
- * el tipo pedido devuelve un PNG, y el prefijo lo delata.
- */
-function supportsWebp(canvas: HTMLCanvasElement): boolean {
-  try {
-    return canvas.toDataURL('image/webp', 0.5).startsWith('data:image/webp')
-  } catch {
-    return false
-  }
-}
-
-/** Bytes reales de un data URL (la parte base64, decodificada). */
-export function dataUrlBytes(dataUrl: string): number {
-  const comma = dataUrl.indexOf(',')
-  if (comma === -1) return 0
-  const b64 = dataUrl.slice(comma + 1)
-  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0
-  return Math.floor((b64.length * 3) / 4) - padding
-}
+// El redimensionado en sí vive en `lib/image-resize.ts` desde la Fase 10 (las
+// sagas también suben imagen). Se re-exporta lo que ya usaba el Perfil para no
+// tocar a quien lo importa.
+export { dataUrlBytes, formatBytes, type ResizeResult }
 
 /**
  * Redimensiona a 400x400 recortando al centro (cover), no deformando.
- *
- * `createImageBitmap` con `imageOrientation: 'from-image'` es lo que respeta el
- * EXIF de las fotos de iPhone: sin eso las verticales salen acostadas. Si el
- * navegador no lo tiene, se cae a un `<img>`, que en Safari moderno ya aplica
- * la orientación solo.
+ * Ver `resizeImageFile` para el detalle de EXIF y la red de seguridad de peso.
  */
-export async function resizeProfilePhoto(file: File): Promise<ResizeResult> {
-  if (!file.type.startsWith('image/')) {
-    throw new Error('Ese archivo no es una imagen. Elegí una foto.')
-  }
-
-  const { source, width, height, release } = await loadImage(file)
-
-  if (!width || !height) {
-    release()
-    throw new Error('No pude leer esa imagen. Probá con otra.')
-  }
-
-  const canvas = document.createElement('canvas')
-  canvas.width = PHOTO_SIZE
-  canvas.height = PHOTO_SIZE
-  const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    release()
-    throw new Error('Tu navegador no me deja procesar la imagen.')
-  }
-
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-
-  // Recorte centrado: tomamos el cuadrado más grande que entre en la foto.
-  const side = Math.min(width, height)
-  const sx = (width - side) / 2
-  const sy = (height - side) / 2
-  ctx.drawImage(source, sx, sy, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE)
-  release()
-
-  const mimeType = supportsWebp(canvas) ? 'image/webp' : 'image/jpeg'
-  let dataUrl = canvas.toDataURL(mimeType, PHOTO_QUALITY)
-
-  // Red de seguridad: una foto con mucho detalle puede pasarse igual. Bajamos
-  // la calidad antes que el tamaño, que es lo que menos se nota en una cara.
-  let quality = PHOTO_QUALITY
-  while (dataUrlBytes(dataUrl) > MAX_DATA_URL_BYTES && quality > 0.4) {
-    quality -= 0.12
-    dataUrl = canvas.toDataURL(mimeType, quality)
-  }
-
-  return {
-    dataUrl,
-    originalBytes: file.size,
-    resizedBytes: dataUrlBytes(dataUrl),
-    mimeType,
-    originalWidth: width,
-    originalHeight: height,
-  }
-}
-
-type LoadedImage = {
-  source: CanvasImageSource
-  width: number
-  height: number
-  release: () => void
-}
-
-async function loadImage(file: File): Promise<LoadedImage> {
-  if (typeof createImageBitmap === 'function') {
-    try {
-      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
-      return {
-        source: bitmap,
-        width: bitmap.width,
-        height: bitmap.height,
-        release: () => bitmap.close(),
-      }
-    } catch {
-      // seguimos por el camino del <img>
-    }
-  }
-
-  const url = URL.createObjectURL(file)
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image()
-      el.onload = () => resolve(el)
-      el.onerror = () => reject(new Error('No pude abrir esa imagen.'))
-      el.src = url
-    })
-    return {
-      source: img,
-      width: img.naturalWidth,
-      height: img.naturalHeight,
-      release: () => URL.revokeObjectURL(url),
-    }
-  } catch (error) {
-    URL.revokeObjectURL(url)
-    throw error
-  }
+export function resizeProfilePhoto(file: File): Promise<ResizeResult> {
+  return resizeImageFile(file, {
+    fit: 'cover-square',
+    size: PHOTO_SIZE,
+    quality: PHOTO_QUALITY,
+    maxBytes: MAX_DATA_URL_BYTES,
+  })
 }
 
 /* ------------------------------------------------------------------ */
@@ -218,11 +106,4 @@ export async function saveProfile(changes: {
     photoDataUrl: data.photoDataUrl ?? null,
     updatedAt: data.updatedAt ?? null,
   }
-}
-
-/** Formatea bytes para mostrarlos en la UI ("1,2 MB", "48 KB"). */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`
 }

@@ -8,6 +8,7 @@ import { StarRating } from '@/components/star-rating'
 import { RatingSheet } from '@/components/rating-sheet'
 import { TagChip } from '@/components/tag-chip'
 import { TagPicker } from '@/components/tag-picker'
+import { BookSagas } from '@/components/book-sagas'
 import { Book, Review } from '@/lib/types'
 import { saveBookTags, toSelection, type BookTag, type TagSelection } from '@/lib/tags'
 import { goBackOr, replaceTo } from '@/lib/navigation'
@@ -531,6 +532,10 @@ export function BookDetail({ bookId }: { bookId: string }) {
                 </p>
               )}
             </div>
+
+            {/* Sagas (Fase 10): mismo lugar y mismo idioma visual que los tags
+                — chips que llevan a la saga y un botón para sumarlo a otra. */}
+            <BookSagas bookId={book.id} bookTitle={mainTitle} />
 
             {/* Fechas, compactas y en una sola línea */}
             {(startDate || endDate) && (
