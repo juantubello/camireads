@@ -145,8 +145,17 @@ function mapReviewToBookWithReview(review: ReviewFromApi): BookWithReview {
       </PageTitle>
 
       {/* Buscador rápido por título. Va acá arriba, antes de la lista, y su
-          desplegable es `absolute`, así que no empuja las tarjetas. */}
-      <BookTitleSearch className="mb-4" />
+          desplegable es `absolute`, así que no empuja las tarjetas.
+          `sticky` (pedido de Camila): queda pegado arriba del <main> con
+          scroll, así no hay que volver al principio de 1.900 reseñas para
+          buscar. El fondo + `-mx` hacen que las tarjetas pasen POR DEBAJO de
+          una franja de lado a lado, no detrás de un input flotando. z-20 para
+          quedar sobre las tarjetas; su desplegable (z-50) vive adentro. El
+          `top` es el inset del notch: 0 en Safari normal, y si algún día se
+          instala como app standalone no queda debajo de la hora. */}
+      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-4 md:-mx-6 mb-2 bg-background/95 px-4 md:px-6 py-2 backdrop-blur">
+        <BookTitleSearch />
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center min-h-[50dvh]">
