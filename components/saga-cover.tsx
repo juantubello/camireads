@@ -16,6 +16,11 @@ import { bookCoverSrc, sagaCoverSrc, type SagaSummary } from '@/lib/sagas'
  *
  * Es decorativa para el lector de pantalla cuando `alt` viene vacío: en la
  * grilla el nombre de la saga ya está escrito debajo y repetirlo es ruido.
+ *
+ * Con el armado automático la grilla puede tener ~300 sagas y hasta 4 tapas
+ * cada una (más de 1000 imágenes): `loading="lazy"` hace que solo se bajen las
+ * que están cerca de la pantalla, y `decoding="async"` saca la decodificación
+ * del hilo principal para que el scroll no tironee en el iPhone.
  */
 export function SagaCover({
   saga,
@@ -48,6 +53,8 @@ export function SagaCover({
         <img
           src={own}
           alt={alt}
+          loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover"
           onError={() => setOwnFailed(true)}
         />
@@ -90,6 +97,8 @@ function Collage({ covers, alt }: { covers: string[]; alt: string }) {
           key={`${index}-${src.slice(0, 40)}`}
           src={src}
           alt=""
+          loading="lazy"
+          decoding="async"
           className="h-full w-full bg-secondary object-cover"
         />
       ))}

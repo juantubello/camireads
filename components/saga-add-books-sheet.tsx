@@ -13,7 +13,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer'
 import { API_BASE_URL, getApiHeaders } from '@/lib/api-config'
-import { addBookToSaga, bookCoverSrc, type SagaDetail } from '@/lib/sagas'
+import { addBookToSaga, bookCoverSrc, seriesFromTitle, type SagaDetail } from '@/lib/sagas'
 
 /**
  * Mismos números que `book-title-search.tsx` (medidos ahí contra el sandbox):
@@ -57,20 +57,6 @@ const MODES: Record<
   },
 }
 
-/**
- * Los títulos que vinieron de Goodreads traen la saga y el tomo al final:
- * "Devilish King (Valentino Empire, #1)". Se extraen para ordenar por TOMO y no
- * por título (si no, "Brutal Princess #4" saldría antes que "Devilish King #1").
- * Acepta tomos decimales de novelas cortas ("#2.5").
- */
-const SERIES_SUFFIX = /\(([^()]+?),?\s*#(\d+(?:\.\d+)?)\)\s*$/
-
-function seriesKey(title: string): { series: string; number: number } | null {
-  const match = SERIES_SUFFIX.exec(title)
-  if (!match) return null
-  return { series: match[1].trim(), number: Number.parseFloat(match[2]) }
-}
-
 const compareText = (a: string, b: string) =>
   a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' })
 
@@ -81,8 +67,8 @@ const compareText = (a: string, b: string) =>
  * la saga ordenada sin tocar nada.
  */
 function bySeriesThenTitle(a: Candidate, b: Candidate): number {
-  const ka = seriesKey(a.title)
-  const kb = seriesKey(b.title)
+  const ka = seriesFromTitle(a.title)
+  const kb = seriesFromTitle(b.title)
   const groupA = ka?.series ?? a.title
   const groupB = kb?.series ?? b.title
   const byGroup = compareText(groupA, groupB)
@@ -547,7 +533,7 @@ function groupBySeries(candidates: Candidate[]): SeriesGroup[] {
   const bySeries = new Map<string, SeriesGroup>()
   const loose: Candidate[] = []
   for (const candidate of candidates) {
-    const key = seriesKey(candidate.title)
+    const key = seriesFromTitle(candidate.title)
     if (!key) {
       loose.push(candidate)
       continue

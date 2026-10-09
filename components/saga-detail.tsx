@@ -13,6 +13,9 @@ import {
   GripVertical,
   ListOrdered,
   Loader2,
+  ArrowDown01,
+  Merge,
+  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
@@ -50,10 +53,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { StarRating } from '@/components/star-rating'
 import { SagaCover } from '@/components/saga-cover'
 import { SagaFormSheet } from '@/components/saga-form-sheet'
 import { SagaAddBooksSheet } from '@/components/saga-add-books-sheet'
+import { SagaMergeSheet } from '@/components/saga-merge-sheet'
 import { goBackOr, replaceTo } from '@/lib/navigation'
 import { isRated } from '@/lib/rating'
 import {
@@ -61,10 +71,13 @@ import {
   bookCoverSrc,
   deleteSaga,
   fetchSaga,
+  mergeSagas,
   removeBookFromSaga,
   reorderSaga,
   type SagaBook,
   type SagaDetail as Saga,
+  type SagaSummary,
+  sortByVolume,
 } from '@/lib/sagas'
 import { cn } from '@/lib/utils'
 
@@ -87,6 +100,15 @@ export function SagaDetailScreen({ sagaId }: { sagaId: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Unir: la hoja elige la otra saga; la confirmación es un AlertDialog acá
+  // (cerrando la hoja antes) para no apilar dos modales.
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergeFrom, setMergeFrom] = useState<SagaSummary | null>(null)
+  const [merging, setMerging] = useState(false)
+  const [mergeError, setMergeError] = useState<string | null>(null)
+  /** Aviso visible tras unir (además del anuncio para lector de pantalla). */
+  const [notice, setNotice] = useState<string | null>(null)
 
   const [sorting, setSorting] = useState(false)
   const [savingOrder, setSavingOrder] = useState(false)
@@ -185,6 +207,22 @@ export function SagaDetailScreen({ sagaId }: { sagaId: string }) {
     setLiveMessage(`${book.title}: posición ${target + 1} de ${saga.books.length}.`)
   }
 
+  /**
+   * "Ordenar por número de tomo": después de unir dos sagas (los de la otra
+   * quedan al final) o de agregar libros sueltos, deja todo por "#N" en un
+   * toque. Los que no tienen "#N" en el título van al final sin moverse entre
+   * ellos. Se guarda igual que un arrastre (optimista + PUT /order).
+   */
+  const byVolume = saga ? sortByVolume(saga.books) : []
+  const volumeOrderDiffers =
+    !!saga && byVolume.some((book, i) => book.bookId !== saga.books[i].bookId)
+
+  function orderByVolume() {
+    if (!saga || !volumeOrderDiffers) return
+    commitOrder(byVolume)
+    setLiveMessage('Ordené los libros por número de tomo.')
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     if (!saga) return
     const { active, over } = event
@@ -224,6 +262,25 @@ export function SagaDetailScreen({ sagaId }: { sagaId: string }) {
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'No pude borrar la saga.')
       setDeleting(false)
+    }
+  }
+
+  async function handleMerge() {
+    if (!saga || !mergeFrom) return
+    setMerging(true)
+    setMergeError(null)
+    try {
+      const updated = await mergeSagas(saga.id, mergeFrom.id)
+      setSaga(updated)
+      confirmedRef.current = updated.books
+      const message = `Uní «${mergeFrom.name}» a esta saga: ahora tiene ${bookCountLabel(updated.books.length).toLowerCase()}.`
+      setNotice(message)
+      setLiveMessage(message)
+      setMergeFrom(null)
+    } catch (error) {
+      setMergeError(error instanceof Error ? error.message : 'No pude unir las sagas.')
+    } finally {
+      setMerging(false)
     }
   }
 
@@ -321,7 +378,10 @@ export function SagaDetailScreen({ sagaId }: { sagaId: string }) {
           <h1 className="text-2xl font-bold leading-tight text-balance md:text-3xl">
             {saga.name}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{bookCountLabel(saga.books.length)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {bookCountLabel(saga.books.length)}
+            {saga.autoDetected && ' · Armada automáticamente'}
+          </p>
 
           <div className="mt-auto flex flex-wrap gap-1 pt-3">
             <Button
@@ -333,18 +393,47 @@ export function SagaDetailScreen({ sagaId }: { sagaId: string }) {
               <Pencil aria-hidden="true" className="h-4 w-4" />
               Editar
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="min-h-11 gap-2 text-muted-foreground hover:text-destructive"
-              onClick={() => {
-                setDeleteError(null)
-                setDeleteOpen(true)
-              }}
-            >
-              <Trash2 aria-hidden="true" className="h-4 w-4" />
-              Borrar
-            </Button>
+            {/* Unir y Borrar en un menú: con la tapa al lado, a 375px quedan
+                ~210px y tres botones no entran en un renglón. Editar queda
+                afuera porque es lo que más se usa. `modal={false}` para que
+                abrir la hoja o el diálogo desde el menú no deje el body con
+                pointer-events bloqueado (pelea conocida de Radix). */}
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-11 w-11 p-0 text-muted-foreground"
+                  aria-label="Más acciones de la saga"
+                >
+                  <MoreHorizontal aria-hidden="true" className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-52">
+                <DropdownMenuItem
+                  className="min-h-11"
+                  onSelect={() => {
+                    setMergeError(null)
+                    setNotice(null)
+                    setMergeOpen(true)
+                  }}
+                >
+                  <Merge aria-hidden="true" />
+                  Unir con otra saga
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  className="min-h-11"
+                  onSelect={() => {
+                    setDeleteError(null)
+                    setDeleteOpen(true)
+                  }}
+                >
+                  <Trash2 aria-hidden="true" />
+                  Borrar saga
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </section>
@@ -378,10 +467,25 @@ export function SagaDetailScreen({ sagaId }: { sagaId: string }) {
           </>
         ) : (
           <>
-            <p className="flex-1 text-sm text-muted-foreground">
-              Mantené apretada la manija <GripVertical aria-hidden="true" className="inline h-4 w-4 align-text-bottom" /> y
-              arrastrá, o usá las flechas.
-            </p>
+            <div className="flex flex-1 flex-col gap-2">
+              <p className="text-sm text-muted-foreground">
+                Mantené apretada la manija <GripVertical aria-hidden="true" className="inline h-4 w-4 align-text-bottom" /> y
+                arrastrá, o usá las flechas.
+              </p>
+              {/* Solo si hay algo que acomodar: si ya está por tomo (o ningún
+                  título trae "#N"), el botón no aporta nada. */}
+              {volumeOrderDiffers && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 self-start gap-2"
+                  onClick={orderByVolume}
+                >
+                  <ArrowDown01 aria-hidden="true" className="h-4 w-4" />
+                  Ordenar por número de tomo
+                </Button>
+              )}
+            </div>
             <Button
               type="button"
               className="min-h-11 shrink-0 gap-2"
@@ -403,6 +507,21 @@ export function SagaDetailScreen({ sagaId }: { sagaId: string }) {
           <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{orderError}</span>
         </p>
+      )}
+
+      {notice && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg bg-secondary p-3 text-sm text-foreground">
+          <Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <p className="flex-1">{notice}</p>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            aria-label="Cerrar el aviso"
+            className="-m-3 flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+          >
+            <X aria-hidden="true" className="h-4 w-4" />
+          </button>
+        </div>
       )}
 
       <p role="status" aria-live="polite" className="sr-only">
@@ -504,6 +623,69 @@ export function SagaDetailScreen({ sagaId }: { sagaId: string }) {
           confirmedRef.current = updated.books
         }}
       />
+
+      <SagaMergeSheet
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        current={saga}
+        onPick={(other) => {
+          setMergeOpen(false)
+          setMergeError(null)
+          // Un respiro para que la hoja termine de cerrarse y devuelva el foco
+          // antes de que el diálogo lo tome (si no, vaul y Radix se lo pelean).
+          window.setTimeout(() => setMergeFrom(other), 250)
+        }}
+      />
+
+      <AlertDialog
+        open={mergeFrom !== null}
+        onOpenChange={(open) => {
+          if (!open && !merging) setMergeFrom(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              ¿Unir «{mergeFrom?.name}» a «{saga.name}»?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <p>
+                  {mergeFrom && mergeFrom.bookCount === 1
+                    ? `El libro de «${mergeFrom.name}» pasa`
+                    : `Los ${mergeFrom?.bookCount ?? 0} libros de «${mergeFrom?.name}» pasan`}{' '}
+                  al final de «{saga.name}» y «{mergeFrom?.name}» se borra.
+                </p>
+                <p className="font-medium text-foreground">
+                  «{saga.name}» se queda con su nombre, foto y orden. Si un libro ya
+                  estaba, no se repite. Los libros y reseñas no se tocan.
+                </p>
+                {mergeError && (
+                  <p role="alert" className="text-destructive">
+                    {mergeError}
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={merging} className="h-11">
+              Mejor no
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleMerge()
+              }}
+              disabled={merging}
+              className="h-11"
+            >
+              {merging && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
+              Sí, unir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={deleteOpen} onOpenChange={(open) => !deleting && setDeleteOpen(open)}>
         <AlertDialogContent>

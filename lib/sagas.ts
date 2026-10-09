@@ -15,6 +15,15 @@
 //   PUT    /sagas/{id}/order            <- {bookIds} (permutación completa) -> SagaDetail
 //   GET    /books/{bookId}/sagas        -> BookSaga[]
 //
+// Armado automático (Fase 10b): sagas detectadas del título de Goodreads
+// "Libro (Saga, #N)". Re-ejecutarlo es seguro: el backend no recrea sagas
+// borradas, no re-agrega libros quitados y reconoce sagas renombradas.
+//   GET    /sagas/auto/preview          -> AutoSagaPreview
+//   POST   /sagas/auto/apply            -> AutoSagaApplyResult (una transacción)
+//   GET    /sagas/auto/undo-preview     -> {count}
+//   POST   /sagas/auto/undo             -> {deleted} (solo automáticas no editadas)
+//   POST   /sagas/{targetId}/merge      <- {fromSagaId} -> SagaDetail (400 si es la misma)
+//
 // Los errores (400/404/409) traen un `message` legible: se muestra tal cual.
 
 import { API_BASE_URL, getApiHeaders, readApiError } from '@/lib/api-config'
@@ -30,6 +39,11 @@ export interface SagaSummary {
   /** Hasta 4 tapas de los primeros libros, en orden (para el collage). */
   previewCovers: string[]
   updatedAt: string | null
+  /**
+   * true = la creó el armado automático y Camila todavía no la tocó. Es lo que
+   * "Deshacer el armado" puede borrar; en cuanto la edita, pasa a ser suya.
+   */
+  autoDetected: boolean
 }
 
 export interface SagaBook {
@@ -136,6 +150,7 @@ function toSummary(raw: Partial<SagaSummary> & { id: number }): SagaSummary {
     bookCount: raw.bookCount ?? 0,
     previewCovers: (raw.previewCovers ?? []).filter(Boolean),
     updatedAt: raw.updatedAt ?? null,
+    autoDetected: raw.autoDetected === true,
   }
 }
 
@@ -265,3 +280,137 @@ export async function fetchBookSagas(
     bookCount: s.bookCount ?? 0,
   }))
 }
+
+/* ------------------------------------------------------------------ */
+/* Armado automático y unir                                            */
+/* ------------------------------------------------------------------ */
+
+export interface AutoSagaBookRef {
+  bookId: number
+  title: string
+}
+
+export interface AutoSagaPreview {
+  /** Sagas nuevas (solo las de 2 o más libros: lo decide el backend). */
+  create: Array<{ name: string; bookCount: number; books: AutoSagaBookRef[] }>
+  /** Sagas que ya existen y suman libros nuevos. */
+  extend: Array<{ sagaId: number; name: string; addCount: number; books: AutoSagaBookRef[] }>
+  totalBooks: number
+  /** Sagas que Camila borró a propósito y el armado respeta (no las recrea). */
+  skippedDismissed: number
+}
+
+export interface AutoSagaApplyResult {
+  created: number
+  extended: number
+  booksAdded: number
+}
+
+function toBookRefs(raw: unknown): AutoSagaBookRef[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((b: Partial<AutoSagaBookRef>) => ({
+    bookId: b.bookId ?? 0,
+    title: b.title ?? '',
+  }))
+}
+
+export async function fetchAutoSagaPreview(signal?: AbortSignal): Promise<AutoSagaPreview> {
+  const data = await request<Partial<AutoSagaPreview>>(
+    '/sagas/auto/preview',
+    { signal },
+    'No pude calcular qué sagas armar.',
+  )
+  const create = (data?.create ?? []).map((c) => ({
+    name: c.name ?? '',
+    books: toBookRefs(c.books),
+    bookCount: c.bookCount ?? (Array.isArray(c.books) ? c.books.length : 0),
+  }))
+  const extend = (data?.extend ?? []).map((e) => ({
+    sagaId: e.sagaId,
+    name: e.name ?? '',
+    books: toBookRefs(e.books),
+    addCount: e.addCount ?? (Array.isArray(e.books) ? e.books.length : 0),
+  }))
+  return {
+    create,
+    extend,
+    totalBooks:
+      data?.totalBooks ??
+      create.reduce((n, c) => n + c.bookCount, 0) + extend.reduce((n, e) => n + e.addCount, 0),
+    skippedDismissed: data?.skippedDismissed ?? 0,
+  }
+}
+
+export async function applyAutoSagas(): Promise<AutoSagaApplyResult> {
+  const data = await request<Partial<AutoSagaApplyResult>>(
+    '/sagas/auto/apply',
+    { method: 'POST' },
+    'No pude armar las sagas.',
+  )
+  return {
+    created: data?.created ?? 0,
+    extended: data?.extended ?? 0,
+    booksAdded: data?.booksAdded ?? 0,
+  }
+}
+
+/** Cuántas sagas automáticas (sin editar) borraría "Deshacer". */
+export async function fetchAutoSagaUndoCount(signal?: AbortSignal): Promise<number> {
+  const data = await request<{ count?: number }>(
+    '/sagas/auto/undo-preview',
+    { signal },
+    'No pude ver qué se puede deshacer.',
+  )
+  return data?.count ?? 0
+}
+
+export async function undoAutoSagas(): Promise<number> {
+  const data = await request<{ deleted?: number }>(
+    '/sagas/auto/undo',
+    { method: 'POST' },
+    'No pude deshacer el armado.',
+  )
+  return data?.deleted ?? 0
+}
+
+/**
+ * Une `fromSagaId` DENTRO de `targetId`: sus libros pasan al final de target
+ * (los que ya estaban no se duplican) y `from` se borra. Target es la que queda.
+ */
+export async function mergeSagas(targetId: number, fromSagaId: number): Promise<SagaDetail> {
+  const data = await request<SagaDetail>(
+    `/sagas/${targetId}/merge`,
+    { method: 'POST', json: { fromSagaId } },
+    'No pude unir las sagas.',
+  )
+  return toDetail(data)
+}
+
+/** "1.219": los números grandes del armado se leen mejor con separador. */
+export function formatCount(n: number): string {
+  return n.toLocaleString('es-AR')
+}
+
+/**
+ * Los títulos que vinieron de Goodreads traen la saga y el tomo al final:
+ * "Devilish King (Valentino Empire, #1)". Coma opcional ("Saga #2") y tomos
+ * decimales de novelas cortas ("#2.5"). Misma regex que `SeriesDetector` del
+ * backend (el armado automático): si cambia una, cambiar la otra.
+ */
+const SERIES_SUFFIX = /\(([^()]+?),?\s*#(\d+(?:\.\d+)?)\)\s*$/
+
+export function seriesFromTitle(title: string): { series: string; number: number } | null {
+  const match = SERIES_SUFFIX.exec(title)
+  if (!match) return null
+  return { series: match[1].trim(), number: Number.parseFloat(match[2]) }
+}
+
+/**
+ * Orden por número de tomo. Los libros sin "#N" en el título no se pueden
+ * ubicar: quedan al final, en el orden en que estaban (sort estable).
+ */
+export function sortByVolume<T extends { title: string }>(books: T[]): T[] {
+  const volume = (b: T) => seriesFromTitle(b.title)?.number ?? Number.POSITIVE_INFINITY
+  return [...books].sort((a, b) => volume(a) - volume(b))
+}
+
